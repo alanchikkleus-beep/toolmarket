@@ -40,7 +40,6 @@ BRANDS = [
 ]
 
 MARKETPLACES = [
-    # Специализированные (металлорежущий инструмент)
     ("ВсеИнструменты",   "https://www.vseinstrumenti.ru/search/?q="),
     ("Tooling.ru",        "https://www.tooling.ru/search?q="),
     ("Sandvik Coromant",  "https://www.sandvik.coromant.com/ru-ru/search#q="),
@@ -48,7 +47,6 @@ MARKETPLACES = [
     ("МиринСтрумента",    "https://mirinstrumenta.ru/search/?q="),
     ("ПрофИнструмент",    "https://profiinstrument.ru/search/?q="),
     ("Ingol.ru",          "https://ingol.ru/search/?q="),
-    # Крупные маркетплейсы
     ("Авито",             "https://www.avito.ru/rossiya?q="),
     ("Яндекс Маркет",     "https://market.yandex.ru/search?text="),
     ("Ozon",              "https://www.ozon.ru/search/?text="),
@@ -56,7 +54,6 @@ MARKETPLACES = [
     ("220 Вольт",         "https://www.220-volt.ru/search/?query="),
     ("Leroy Merlin",      "https://leroymerlin.ru/search/?q="),
     ("OBI",               "https://www.obi.ru/search/?q="),
-    # B2B и оптовые
     ("Tiu.ru",            "https://tiu.ru/search?search[text]="),
     ("Pulscen.ru",        "https://pulscen.ru/search?query="),
     ("B2B-Center",        "https://www.b2b-center.ru/market/search.html?q="),
@@ -112,7 +109,6 @@ def _estimate_market(query: str, category: str) -> Dict:
     q_enc = query.replace(" ", "+")
     listings: List[Dict] = []
 
-    # Карточки площадок
     for market_name, base_url in MARKETPLACES:
         listings.append({
             "title": "Найти на " + market_name,
@@ -124,7 +120,6 @@ def _estimate_market(query: str, category: str) -> Dict:
             "location": market_name,
         })
 
-    # Оценка по брендам
     for brand_name, brand_m in BRANDS:
         price = int(round(base_avg * brand_m / 10) * 10)
         listings.append({
@@ -133,4 +128,36 @@ def _estimate_market(query: str, category: str) -> Dict:
             "price_text": str(price) + " \u20bd",
             "condition": "new",
             "image": "",
-            "url": "htt
+            "url": "https://www.vseinstrumenti.ru/search/?q=" + q_enc,
+            "location": brand_name,
+        })
+
+    prices = [x["price"] for x in listings if x["price"] is not None]
+    avg_price = int(round(sum(prices) / len(prices) / 10) * 10) if prices else None
+
+    stats = {
+        "avg_price": avg_price,
+        "min_price": min(prices) if prices else None,
+        "max_price": max(prices) if prices else None,
+        "offer_count": len(prices),
+        "new_count": len(prices),
+        "used_count": 0,
+        "new_avg": avg_price,
+        "new_min": min(prices) if prices else None,
+        "new_max": max(prices) if prices else None,
+        "used_avg": None,
+        "used_min": None,
+        "used_max": None,
+        "popularity": "Средняя",
+        "popularity_level": 3,
+    }
+
+    return {
+        "query": query,
+        "listings": listings,
+        "stats": stats,
+        "source": "Рыночная оценка",
+        "from_cache": False,
+        "timestamp": ts,
+        "is_estimate": True,
+    }

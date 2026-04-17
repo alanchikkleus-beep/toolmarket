@@ -8,7 +8,7 @@ CACHE_TTL = 1800
 
 BASE_PRICES = {
     "inserts": {
-        "C": (280, 950), "T": (220, 780), "S": (320, 1100),            
+        "C": (280, 950), "T": (220, 780), "S": (320, 1100),
         "W": (350, 1200), "R": (380, 1300), "D": (260, 900),
         "V": (240, 850), "default": (250, 900),
     },
@@ -139,4 +139,14 @@ def _estimate_market(query: str, category: str) -> Dict:
         "used_max": None,
         "popularity": "Средняя",
         "popularity_level": 3,
+    }
+
+    return {
+        "query": query,
+        "listings": listings,
+        "stats": stats,
+        "source": "Рыночная оценка",
+        "from_cache": False,
+        "timestamp": ts,
+        "is_estimate": True,
     }

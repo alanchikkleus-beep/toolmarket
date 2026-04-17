@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ToolMarket Monitor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="logo">ToolMarket <span>Monitor</span></div>
+    <div class="badge">Металлорежущий инструмент</div>
+    <div style="margin-left:auto">
+      <button class="btn btn-secondary" id="cmp-open-btn" style="display:none" onclick="openCompare()">
+        ⚖️ Сравнить (<span id="cmp-count">0</span>)
+      </button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Категории -->
+    <div class="cat-bar" id="cat-bar">
+      <button class="cat-btn active" data-cat="inserts">🔶 Пластины</button>
+      <button class="cat-btn" data-cat="drills">🔩 Сверла</button>
+      <button class="cat-btn" data-cat="mills">⚙️ Фрезы</button>
+      <button class="cat-btn" data-cat="burrs">🌀 Борфрезы</button>
+      <button class="cat-btn" data-cat="reamers">🔧 Развертки</button>
+    </div>
+
+    <!-- Поиск -->
+    <div class="search-wrap">
+      <div class="search-box">
+        <input id="search-input" type="text"
+          placeholder="Введите название или код инструмента..."
+          spellcheck="false" autocomplete="off">
+        <button class="btn btn-primary" id="search-btn">Найти</button>
+      </div>
+    </div>
+
+    <!-- Быстрый выбор -->
+    <div class="quick-select">
+      <div class="quick-label">Быстрый выбор</div>
+      <div class="chips" id="quick-chips"></div>
+    </div>
+
+    <!-- История поиска -->
+    <div class="quick-select">
+      <div class="quick-label">История поиска</div>
+      <div class="chips" id="history-list"></div>
+    </div>
+
+    <!-- Калькулятор -->
+    <div class="calc-bar">
+      <span class="quick-label" style="margin:0">🧮 Калькулятор:</span>
+      <input id="calc-price" type="number" placeholder="Цена за шт (₽)" min="0">
+      <span style="color:var(--muted)">×</span>
+      <input id="calc-qty" type="number" placeholder="Кол-во" min="1" value="10">
+      <span style="color:var(--muted)">=</span>
+      <span id="calc-result" style="font-weight:700;color:var(--success);min-width:100px">—</span>
+    </div>
+
+    <!-- Вкладки -->
+    <div class="tabs">
+      <div class="tab active" data-tab="market">📈 Рынок и цены</div>
+      <div class="tab" data-tab="compat">⚙️ Совместимость</div>
+      <div class="tab" data-tab="shapes">📐 Типы инструментов</div>
+      <div class="tab" data-tab="holders">🔧 Держатели</div>
+    </div>
+
+    <div id="tab-market"  class="tab-panel"></div>
+    <div id="tab-compat"  class="tab-panel" style="display:none"></div>
+    <div id="tab-shapes"  class="tab-panel" style="display:none"></div>
+    <div id="tab-holders" class="tab-panel" style="display:none"></div>
+
+  </main>
+</div>
+
+<!-- Модальное окно сравнения -->
+<div id="cmp-modal" class="cmp-overlay" style="display:none" onclick="if(event.target===this)closeCompare()">
+  <div class="cmp-box">
+    <div class="cmp-header">
+      <span style="font-weight:700;font-size:1.05rem">⚖️ Сравнение инструментов</span>
+      <button class="btn btn-secondary" onclick="closeCompare()">✕ Закрыть</button>
+    </div>
+    <div id="cmp-content"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,256 @@
+{
+  "categories": {
+    "inserts": {
+      "name": "Пластины твердосплавные",
+      "icon": "🔶",
+      "search_keywords": ["твердосплавные пластины", "режущие пластины", "carbide insert"],
+      "unit": "шт / упак",
+      "image_hint": "carbide_insert"
+    },
+    "drills": {
+      "name": "Сверла",
+      "icon": "🔩",
+      "search_keywords": ["сверло", "сверла", "drill"],
+      "unit": "шт",
+      "image_hint": "drill",
+      "subtypes": {
+        "hss": "Сверло HSS (быстрорез)",
+        "carbide": "Сверло твердосплавное",
+        "indexable": "Сверло со сменными пластинами",
+        "center": "Центровочное сверло",
+        "deep": "Сверло для глубокого сверления"
+      },
+      "popular": [
+        "Сверло ф3", "Сверло ф4", "Сверло ф5", "Сверло ф6", "Сверло ф8",
+        "Сверло ф10", "Сверло ф12", "Сверло ф16", "Сверло ф20",
+        "Сверло HSS 6мм", "Сверло HSS 8мм", "Сверло HSS 10мм",
+        "Сверло твердосплавное 6мм", "Сверло твердосплавное 8мм"
+      ]
+    },
+    "mills": {
+      "name": "Фрезы",
+      "icon": "⚙️",
+      "search_keywords": ["фреза", "фрезы", "milling cutter", "end mill"],
+      "unit": "шт",
+      "image_hint": "milling_cutter",
+      "subtypes": {
+        "end_mill": "Концевая фреза",
+        "face_mill": "Торцевая фреза",
+        "slot_mill": "Дисковая фреза",
+        "ball_nose": "Шаровая фреза",
+        "roughing": "Черновая фреза (кукуруза)",
+        "chamfer": "Фреза для фасок",
+        "thread": "Фреза резьбовая"
+      },
+      "popular": [
+        "Фреза концевая ф6", "Фреза концевая ф8", "Фреза концевая ф10",
+        "Фреза концевая ф12", "Фреза концевая ф16", "Фреза концевая ф20",
+        "Фреза торцевая 50мм", "Фреза торцевая 63мм", "Фреза торцевая 80мм",
+        "Фреза шаровая ф6", "Фреза шаровая ф8", "Фреза шаровая ф10",
+        "Sandvik CoroMill", "Iscar HeliMill"
+      ]
+    },
+    "burrs": {
+      "name": "Борфрезы",
+      "icon": "🌀",
+      "search_keywords": ["борфреза", "борфрезы", "бор-фреза", "carbide burr"],
+      "unit": "шт",
+      "image_hint": "burr",
+      "subtypes": {
+        "cylindrical": "Цилиндрическая борфреза",
+        "ball": "Шаровая борфреза",
+        "cone": "Конусная борфреза",
+        "oval": "Овальная борфреза",
+        "tree": "Дерево-образная борфреза",
+        "flame": "Пламевидная борфреза"
+      },
+      "popular": [
+        "Борфреза ф6", "Борфреза ф8", "Борфреза ф10", "Борфреза ф12",
+        "Борфреза цилиндрическая 6мм", "Борфреза шаровая 6мм",
+        "Борфреза твердосплавная", "Борфреза по металлу"
+      ]
+    },
+    "reamers": {
+      "name": "Развертки",
+      "icon": "🔧",
+      "search_keywords": ["развертка", "развертки", "reamer"],
+      "unit": "шт",
+      "image_hint": "reamer",
+      "subtypes": {
+        "machine": "Машинная развертка",
+        "hand": "Ручная развертка",
+        "adjustable": "Регулируемая развертка",
+        "carbide": "Твердосплавная развертка",
+        "taper": "Конусная развертка"
+      },
+      "popular": [
+        "Развертка ф6", "Развертка ф8", "Развертка ф10", "Развертка ф12",
+        "Развертка ф16", "Развертка ф20", "Развертка машинная",
+        "Развертка ручная", "Развертка регулируемая"
+      ]
+    }
+  },
+  "shapes": {
+    "C": {
+      "name": "Ромб 80°", "description": "Универсальная форма для наружного точения и расточки",
+      "applications": ["Наружное точение", "Расточка", "Чистовая обработка", "Копирование"],
+      "industries": ["Машиностроение", "Автомобильная промышленность", "Общее производство"],
+      "holder_prefixes": ["PCL", "PCD", "SCL", "SCD", "DCLNR", "DCLNL", "SCLCR", "SCLCL"],
+      "positive_variants": ["CCMT", "CCGT", "CCGX"],
+      "negative_variants": ["CNMG", "CNGG", "CNGA", "CNGN"]
+    },
+    "D": {
+      "name": "Ромб 55°", "description": "Для профильного точения и обработки галтелей",
+      "applications": ["Профильное точение", "Копирование", "Наружное точение", "Обработка конусов"],
+      "industries": ["Авиационная промышленность", "Машиностроение", "Нефтяная отрасль"],
+      "holder_prefixes": ["PDN", "PDS", "SDJN", "SDJL", "SDJR", "PDJNR", "PDJNL"],
+      "positive_variants": ["DCMT", "DCGT", "DCGX"],
+      "negative_variants": ["DNMG", "DNGA", "DNGG"]
+    },
+    "R": {
+      "name": "Круглая", "description": "Максимальная прочность режущей кромки, для черновой обработки",
+      "applications": ["Черновое точение", "Прерывистое резание", "Обработка поковок и отливок"],
+      "industries": ["Тяжёлое машиностроение", "Горнодобывающая промышленность", "Энергетика"],
+      "holder_prefixes": ["PRDN", "SRDN", "TRDN", "RRCQ"],
+      "positive_variants": ["RCMT", "RCGX"],
+      "negative_variants": ["RNMG", "RNGA"]
+    },
+    "S": {
+      "name": "Квадратная 90°", "description": "Четыре режущих кромки, экономичная, для черновой обработки",
+      "applications": ["Черновое точение", "Наружное точение", "Полукарманная расточка"],
+      "industries": ["Машиностроение", "Общее производство", "Автомобильная промышленность"],
+      "holder_prefixes": ["PSN", "MSN", "PSSN", "CSSL", "CSSR"],
+      "positive_variants": ["SCMT", "SCGT"],
+      "negative_variants": ["SNMG", "SNGA", "SNGG"]
+    },
+    "T": {
+      "name": "Треугольная 60°", "description": "Три режущих кромки, универсальная для точения и расточки",
+      "applications": ["Наружное точение", "Расточка", "Профильное точение", "Канавки"],
+      "industries": ["Машиностроение", "Автомобильная промышленность", "Медицинская промышленность"],
+      "holder_prefixes": ["PTN", "MTN", "STTN", "PTFNR", "PTFNL", "MTJNR", "MTJNL"],
+      "positive_variants": ["TCMT", "TCGT", "TCGX"],
+      "negative_variants": ["TNMG", "TNGA", "TNGG"]
+    },
+    "V": {
+      "name": "Ромб 35°", "description": "Острый угол для прецизионного профильного точения",
+      "applications": ["Профильное точение", "Прецизионное точение", "Обработка галтелей", "Резьба"],
+      "industries": ["Авиационная промышленность", "Медицинская промышленность", "Точное машиностроение"],
+      "holder_prefixes": ["SVJBR", "SVJBL", "MVJNR", "MVJNL"],
+      "positive_variants": ["VCMT", "VCGT"],
+      "negative_variants": ["VNMG", "VNGA"]
+    },
+    "W": {
+      "name": "Шестиугольник 80°", "description": "Шесть режущих кромок, экономичная для черновой обработки",
+      "applications": ["Черновое точение", "Наружное точение"],
+      "industries": ["Тяжёлое машиностроение", "Общее производство"],
+      "holder_prefixes": ["PWL", "DWLN", "PWLNR", "PWLNL"],
+      "positive_variants": ["WCMT"],
+      "negative_variants": ["WNMG", "WNGA"]
+    }
+  },
+  "clearance_angles": {
+    "A": "3°", "B": "5°", "C": "7°", "N": "0° (негативный)", "P": "11°"
+  },
+  "tolerance_classes": {
+    "A": "±0.005 мм", "C": "±0.013 мм", "G": "±0.025 мм", "M": "±0.08–0.18 мм", "U": "±0.13–0.38 мм"
+  },
+  "brands": {
+    "sandvik": {
+      "name": "Sandvik Coromant", "country": "Швеция", "logo_color": "#FFD700",
+      "lines": {
+        "CoroTurn 107": {
+          "description": "Лёгкая и средняя обработка, позитивные пластины",
+          "holders": ["SCLCR 1212 H09", "SCLCR 1616 H09", "SCLCR 2020 K09", "SCLCR 2525 M09"],
+          "inserts": ["CCMT 09T304", "CCMT 09T308", "CCGT 09T304", "CCMT 060204"]
+        },
+        "CoroTurn 111": {
+          "description": "Профильное точение, пластины ромб 35°",
+          "holders": ["SVJBR 1616 H11", "SVJBR 2020 K11", "SVJBL 2020 K11", "SVJBR 2525 M11"],
+          "inserts": ["VCMT 110304", "VCMT 110308", "VCGT 110304", "VCMT 160404"]
+        },
+        "CoroTurn 121": {
+          "description": "Тяжёлая и средняя обработка, негативные пластины CNMG",
+          "holders": ["PCLNR 2020 K12", "PCLNR 2525 M12", "PCLNR 3232 P12", "PCLNL 2525 M12"],
+          "inserts": ["CNMG 120408", "CNMG 120412", "CNMG 160612", "CNMG 190612"]
+        },
+        "T-Max P": {
+          "description": "Точение с максимальной производительностью",
+          "holders": ["PTFNR 2020 K16", "PTFNR 2525 M16", "PTFNL 2525 M16"],
+          "inserts": ["TNMG 160404", "TNMG 160408", "TNMG 160412", "TNMG 220408"]
+        }
+      }
+    },
+    "kennametal": {
+      "name": "Kennametal", "country": "США", "logo_color": "#FF6B00",
+      "lines": {
+        "CNMG Series": {
+          "description": "Стандартные пластины для внешнего точения",
+          "holders": ["PCLNR 2020 K12", "PCLNR 2525 M12", "PCLNL 2525 M12"],
+          "inserts": ["CNMG 120408 MF1", "CNMG 120412 MF2", "CNMG 160612 RP2"]
+        },
+        "TNMG Series": {
+          "description": "Треугольные пластины, широкое применение",
+          "holders": ["MTJNR 2020 K16", "MTJNR 2525 M16", "MTJNL 2525 M16"],
+          "inserts": ["TNMG 160404 MF1", "TNMG 160408 MF2", "TNMG 220408 RP2"]
+        }
+      }
+    },
+    "iscar": {
+      "name": "ISCAR", "country": "Израиль", "logo_color": "#0057A8",
+      "lines": {
+        "IQ TURN": {
+          "description": "Высокопроизводительное точение",
+          "holders": ["PCLNR 2525 M12", "PCLNL 2525 M12", "DCLNR 2525 M12"],
+          "inserts": ["CNMG 120408-SM IC8250", "CNMG 120412-TF IC907", "CNMG 160612-SM IC8250"]
+        }
+      }
+    },
+    "mitsubishi": {
+      "name": "Mitsubishi Materials", "country": "Япония", "logo_color": "#CC0000",
+      "lines": {
+        "UC5115 Series": {
+          "description": "Обработка нержавеющих сталей",
+          "holders": ["PCLNR 2525 M12", "MTJNR 2525 M16"],
+          "inserts": ["CNMG 120408 UC5115", "TNMG 160408 UC5115"]
+        }
+      }
+    },
+    "seco": {
+      "name": "Seco Tools", "country": "Швеция", "logo_color": "#1B4F72",
+      "lines": {
+        "Turning": {
+          "description": "Наружное точение стандартными пластинами",
+          "holders": ["PCLNR 2525 M12", "PCLNL 2525 M12", "PTFNR 2525 M16"],
+          "inserts": ["CNMG 120408 MF2 TP2500", "CNMG 120412 M3 TP3500", "TNMG 160408 MF2"]
+        }
+      }
+    },
+    "korloy": {
+      "name": "Korloy", "country": "Южная Корея", "logo_color": "#004B87",
+      "lines": {
+        "PC Series": {
+          "description": "Экономичные пластины для точения",
+          "holders": ["PCLNR 2525 M12", "MTJNR 2525 M16", "SCLCR 2020 K09"],
+          "inserts": ["CNMG 120408 PC9030", "TNMG 160408 NC3030", "CCMT 09T304 HC9125"]
+        }
+      }
+    }
+  },
+  "materials": {
+    "P": {"name": "Сталь", "color": "#4A90D9", "description": "Углеродистые и легированные стали"},
+    "M": {"name": "Нержавеющая сталь", "color": "#E8A838", "description": "Аустенитные, ферритные, мартенситные стали"},
+    "K": {"name": "Чугун", "color": "#7B68EE", "description": "Серый, ковкий, закалённый чугун"},
+    "N": {"name": "Цветные металлы", "color": "#50C878", "description": "Алюминий, медь, бронза"},
+    "S": {"name": "Жаростойкие сплавы", "color": "#FF6347", "description": "Титан, жаростойкие суперсплавы"},
+    "H": {"name": "Закалённые материалы", "color": "#DC143C", "description": "Закалённые стали 45–65 HRC"}
+  },
+  "popular_inserts": [
+    "CNMG 120408", "CNMG 120412", "CNMG 160612",
+    "TNMG 160408", "TNMG 160404", "TNMG 220408",
+    "SNMG 120408", "SNMG 150612",
+    "DNMG 150408", "DNMG 110304",
+    "CCMT 09T304", "CCMT 09T308", "CCMT 060204",
+    "VCMT 110304", "VCMT 160404",
+    "RCMT 1204M0", "RCMT 1606M0"
+  ]
+}

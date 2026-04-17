@@ -1,6 +1,5 @@
 import re
 import time
-import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional
 import httpx
@@ -13,10 +12,19 @@ CACHE: Dict[str, Dict] = {}
 CACHE_TTL = 1800
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept-Language": "ru-RU,ru;q=0.9",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
 }
+
+SOURCES = [
+    ("_fetch_220volt",   "220-volt.ru"),
+    ("_fetch_tiu",       "tiu.ru"),
+    ("_fetch_price_ru",  "price.ru"),
+]
 
 
 class MarketScraper:
@@ -28,25 +36,29 @@ class MarketScraper:
             r = dict(cached["data"]); r["from_cache"] = True
             return r
 
-        data = await self._fetch_vseinstrumenti(query, limit)
-        if not data["listings"]:
-            data2 = await self._fetch_tiu(query, limit)
-            if data2["listings"]:
-                data = data2
+        for method_name, _ in SOURCES:
+            method = getattr(self, method_name)
+            data = await method(query, limit)
+            if data.get("listings"):
+                CACHE[key] = {"ts": time.time(), "data": data}
+                return data
 
-        CACHE[key] = {"ts": time.time(), "data": data}
-        return data
-
-    async def _fetch_vseinstrumenti(self, query: str, limit: int) -> Dict:
+        # All failed — return empty with marketplace links
         ts = datetime.now().strftime("%d.%m.%Y %H:%M")
-        url = f"https://www.vseinstrumenti.ru/search/?q={query.replace(' ', '+')}"
+        result = _empty(query, "Автоматический поиск недоступен — используйте ссылки на площадки", ts)
+        CACHE[key] = {"ts": time.time(), "data": result}
+        return result
 
+    async def _fetch_220volt(self, query: str, limit: int) -> Dict:
+        ts = datetime.now().strftime("%d.%m.%Y %H:%M")
+        q = query.replace(" ", "+")
+        url = f"https://www.220-volt.ru/search/?query={q}"
         try:
             async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers=HEADERS) as c:
                 r = await c.get(url)
                 if r.status_code == 200:
-                    return _parse_vseinstrumenti(r.text, query, limit, ts)
-                return _empty(query, f"vseinstrumenti.ru вернул {r.status_code}", ts)
+                    return _parse_220volt(r.text, query, limit, ts)
+                return _empty(query, f"220-volt.ru: {r.status_code}", ts)
         except Exception as e:
             return _empty(query, str(e)[:80], ts)
 
@@ -58,71 +70,56 @@ class MarketScraper:
                 r = await c.get(url)
                 if r.status_code == 200:
                     return _parse_tiu(r.text, query, limit, ts)
-                return _empty(query, f"tiu.ru вернул {r.status_code}", ts)
+                return _empty(query, f"tiu.ru: {r.status_code}", ts)
+        except Exception as e:
+            return _empty(query, str(e)[:80], ts)
+
+    async def _fetch_price_ru(self, query: str, limit: int) -> Dict:
+        ts = datetime.now().strftime("%d.%m.%Y %H:%M")
+        q = query.replace(" ", "+")
+        url = f"https://price.ru/search/?text={q}"
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=HEADERS) as c:
+                r = await c.get(url)
+                if r.status_code == 200:
+                    return _parse_price_ru(r.text, query, limit, ts)
+                return _empty(query, f"price.ru: {r.status_code}", ts)
         except Exception as e:
             return _empty(query, str(e)[:80], ts)
 
 
-def _parse_vseinstrumenti(html: str, query: str, limit: int, ts: str) -> Dict:
+def _parse_220volt(html: str, query: str, limit: int, ts: str) -> Dict:
     soup = BeautifulSoup(html, "lxml")
     listings: List[Dict] = []
 
-    cards = soup.select("[class*='product-card'], [class*='ProductCard'], [data-product-id], [class*='product_card']")
+    cards = soup.select(".product-card, .product_card, [class*='ProductCard'], [class*='product-item']")
     if not cards:
-        cards = soup.select("article, [class*='item'], [class*='card']")
+        cards = soup.select("[data-product-id], [data-id], .item")
 
     for card in cards[:limit]:
-        # Title
-        title_el = card.select_one("a[class*='name'], a[class*='title'], [class*='name'] a, h3 a, h2 a, [class*='ProductName']")
-        if not title_el:
-            title_el = card.select_one("a[href*='/product'], a[href*='/catalog']")
+        title_el = card.select_one("a[class*='name'], a[class*='title'], [class*='name'] a, h3 a, h2 a")
         title = title_el.get_text(strip=True) if title_el else ""
         if not title or len(title) < 3:
             continue
 
-        # Price
         price_el = card.select_one("[class*='price'], [class*='Price'], [class*='cost']")
         price_text = price_el.get_text(strip=True) if price_el else "Цена не указана"
         price = _num(price_text)
 
-        # Image
         img_el = card.select_one("img")
-        image = ""
-        if img_el:
-            image = img_el.get("src") or img_el.get("data-src") or img_el.get("data-lazy") or ""
-            if image.startswith("//"):
-                image = "https:" + image
-            if not image.startswith("http"):
-                image = ""
+        image = _get_img(img_el)
 
-        # URL
         link_el = card.select_one("a[href]")
-        href = link_el["href"] if link_el else ""
-        if href and not href.startswith("http"):
-            href = "https://www.vseinstrumenti.ru" + href
+        href = _fix_url(link_el["href"] if link_el else "", "https://www.220-volt.ru")
 
         listings.append({
-            "title": title,
-            "price": price,
+            "title": title, "price": price,
             "price_text": price_text if price else "Цена не указана",
-            "condition": "new",
-            "image": image,
-            "url": href,
-            "location": "ВсеИнструменты",
+            "condition": "new", "image": image,
+            "url": href, "location": "220-volt.ru",
         })
 
-    prices_all  = [x["price"] for x in listings if x["price"]]
-    prices_new  = prices_all[:]
-    prices_used = []
-
-    return {
-        "query": query,
-        "listings": listings,
-        "stats": _stats(prices_all, prices_new, prices_used, len(listings)),
-        "source": "vseinstrumenti.ru",
-        "from_cache": False,
-        "timestamp": ts,
-    }
+    return _build_result(query, listings, "220-volt.ru", ts)
 
 
 def _parse_tiu(html: str, query: str, limit: int, ts: str) -> Dict:
@@ -144,16 +141,10 @@ def _parse_tiu(html: str, query: str, limit: int, ts: str) -> Dict:
         price = _num(price_text)
 
         img_el = card.select_one("img")
-        image = ""
-        if img_el:
-            image = img_el.get("src") or img_el.get("data-src") or ""
-            if image.startswith("//"):
-                image = "https:" + image
+        image = _get_img(img_el)
 
         link_el = card.select_one("a[href]")
-        href = link_el["href"] if link_el else ""
-        if href and not href.startswith("http"):
-            href = "https://tiu.ru" + href
+        href = _fix_url(link_el["href"] if link_el else "", "https://tiu.ru")
 
         listings.append({
             "title": title, "price": price,
@@ -162,46 +153,60 @@ def _parse_tiu(html: str, query: str, limit: int, ts: str) -> Dict:
             "url": href, "location": "tiu.ru",
         })
 
+    return _build_result(query, listings, "tiu.ru", ts)
+
+
+def _parse_price_ru(html: str, query: str, limit: int, ts: str) -> Dict:
+    soup = BeautifulSoup(html, "lxml")
+    listings: List[Dict] = []
+
+    cards = soup.select(".offer, .product, [class*='offer'], [class*='product']")
+
+    for card in cards[:limit]:
+        title_el = card.select_one("a[class*='name'], a[class*='title'], h3 a, h2 a, a")
+        title = title_el.get_text(strip=True) if title_el else ""
+        if not title or len(title) < 3:
+            continue
+
+        price_el = card.select_one("[class*='price'], [class*='Price']")
+        price_text = price_el.get_text(strip=True) if price_el else "Цена не указана"
+        price = _num(price_text)
+
+        link_el = card.select_one("a[href]")
+        href = _fix_url(link_el["href"] if link_el else "", "https://price.ru")
+
+        listings.append({
+            "title": title, "price": price,
+            "price_text": price_text if price else "Цена не указана",
+            "condition": _cond(title), "image": "",
+            "url": href, "location": "price.ru",
+        })
+
+    return _build_result(query, listings, "price.ru", ts)
+
+
+def _build_result(query, listings, source, ts):
     prices_all  = [x["price"] for x in listings if x["price"]]
     prices_new  = [x["price"] for x in listings if x["price"] and x["condition"] == "new"]
     prices_used = [x["price"] for x in listings if x["price"] and x["condition"] == "used"]
-
     return {
         "query": query, "listings": listings,
         "stats": _stats(prices_all, prices_new, prices_used, len(listings)),
-        "source": "tiu.ru", "from_cache": False, "timestamp": ts,
+        "source": source, "from_cache": False, "timestamp": ts,
     }
 
 
-def _cond(text: str) -> str:
-    low = text.lower()
-    if any(w in low for w in USED_WORDS): return "used"
-    if any(w in low for w in NEW_WORDS):  return "new"
-    return "unknown"
+def _get_img(img_el) -> str:
+    if not img_el:
+        return ""
+    src = img_el.get("src") or img_el.get("data-src") or img_el.get("data-lazy") or ""
+    if src.startswith("//"):
+        src = "https:" + src
+    return src if src.startswith("http") else ""
 
-def _num(s: str) -> Optional[float]:
-    c = re.sub(r"[^\d]", "", s)
-    try:
-        v = float(c)
-        return v if 10 < v < 9_000_000 else None
-    except: return None
 
-def _stats(all_p, new_p, used_p, count) -> Dict:
-    lvl = (5 if count>=50 else 4 if count>=20 else 3 if count>=10 else 2 if count>=3 else 1 if count>0 else 0)
-    labels = ["Нет данных","Редкий товар","Низкая","Средняя","Высокая","Очень высокая"]
-    def s(p): return (round(sum(p)/len(p)), int(min(p)), int(max(p))) if p else (None,None,None)
-    a,mn,mx=s(all_p); na,nmn,nmx=s(new_p); ua,umn,umx=s(used_p)
-    return {"avg_price":a,"min_price":mn,"max_price":mx,"offer_count":count,
-            "new_count":len(new_p),"used_count":len(used_p),
-            "new_avg":na,"new_min":nmn,"new_max":nmx,
-            "used_avg":ua,"used_min":umn,"used_max":umx,
-            "popularity":labels[lvl],"popularity_level":lvl}
-
-def _empty(query, error, ts) -> Dict:
-    return {"query":query,"listings":[],
-            "stats":{"avg_price":None,"min_price":None,"max_price":None,
-                     "offer_count":0,"new_count":0,"used_count":0,
-                     "new_avg":None,"new_min":None,"new_max":None,
-                     "used_avg":None,"used_min":None,"used_max":None,
-                     "popularity":"Нет данных","popularity_level":0},
-            "source":"vseinstrumenti.ru","from_cache":False,"error":error,"timestamp":ts}
+def _fix_url(href, base) -> str:
+    if not href:
+        return ""
+    if href.startswith("http"):
+        return h

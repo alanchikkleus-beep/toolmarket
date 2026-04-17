@@ -28,30 +28,107 @@ class MarketScraper:
             r = dict(cached["data"]); r["from_cache"] = True
             return r
 
-        data = await self._fetch_tiu(query, limit)
+        data = await self._fetch_vseinstrumenti(query, limit)
+        if not data["listings"]:
+            data2 = await self._fetch_tiu(query, limit)
+            if data2["listings"]:
+                data = data2
+
         CACHE[key] = {"ts": time.time(), "data": data}
         return data
 
-    async def _fetch_tiu(self, query: str, limit: int) -> Dict:
-        ts  = datetime.now().strftime("%d.%m.%Y %H:%M")
-        url = f"https://tiu.ru/search?search[text]={query}"
-        avito_url = f"https://www.avito.ru/rossiya?q={query.replace(' ','+')}"
+    async def _fetch_vseinstrumenti(self, query: str, limit: int) -> Dict:
+        ts = datetime.now().strftime("%d.%m.%Y %H:%M")
+        url = f"https://www.vseinstrumenti.ru/search/?q={query.replace(' ', '+')}"
 
         try:
             async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers=HEADERS) as c:
                 r = await c.get(url)
                 if r.status_code == 200:
-                    return _parse_tiu(r.text, query, limit, ts, avito_url)
-                return _empty(query, f"tiu.ru вернул {r.status_code}", ts, avito_url)
+                    return _parse_vseinstrumenti(r.text, query, limit, ts)
+                return _empty(query, f"vseinstrumenti.ru вернул {r.status_code}", ts)
         except Exception as e:
-            return _empty(query, str(e)[:80], ts, avito_url)
+            return _empty(query, str(e)[:80], ts)
+
+    async def _fetch_tiu(self, query: str, limit: int) -> Dict:
+        ts = datetime.now().strftime("%d.%m.%Y %H:%M")
+        url = f"https://tiu.ru/search?search[text]={query}"
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=HEADERS) as c:
+                r = await c.get(url)
+                if r.status_code == 200:
+                    return _parse_tiu(r.text, query, limit, ts)
+                return _empty(query, f"tiu.ru вернул {r.status_code}", ts)
+        except Exception as e:
+            return _empty(query, str(e)[:80], ts)
 
 
-def _parse_tiu(html: str, query: str, limit: int, ts: str, avito_url: str) -> Dict:
+def _parse_vseinstrumenti(html: str, query: str, limit: int, ts: str) -> Dict:
     soup = BeautifulSoup(html, "lxml")
     listings: List[Dict] = []
 
-    # tiu.ru product cards
+    cards = soup.select("[class*='product-card'], [class*='ProductCard'], [data-product-id], [class*='product_card']")
+    if not cards:
+        cards = soup.select("article, [class*='item'], [class*='card']")
+
+    for card in cards[:limit]:
+        # Title
+        title_el = card.select_one("a[class*='name'], a[class*='title'], [class*='name'] a, h3 a, h2 a, [class*='ProductName']")
+        if not title_el:
+            title_el = card.select_one("a[href*='/product'], a[href*='/catalog']")
+        title = title_el.get_text(strip=True) if title_el else ""
+        if not title or len(title) < 3:
+            continue
+
+        # Price
+        price_el = card.select_one("[class*='price'], [class*='Price'], [class*='cost']")
+        price_text = price_el.get_text(strip=True) if price_el else "Цена не указана"
+        price = _num(price_text)
+
+        # Image
+        img_el = card.select_one("img")
+        image = ""
+        if img_el:
+            image = img_el.get("src") or img_el.get("data-src") or img_el.get("data-lazy") or ""
+            if image.startswith("//"):
+                image = "https:" + image
+            if not image.startswith("http"):
+                image = ""
+
+        # URL
+        link_el = card.select_one("a[href]")
+        href = link_el["href"] if link_el else ""
+        if href and not href.startswith("http"):
+            href = "https://www.vseinstrumenti.ru" + href
+
+        listings.append({
+            "title": title,
+            "price": price,
+            "price_text": price_text if price else "Цена не указана",
+            "condition": "new",
+            "image": image,
+            "url": href,
+            "location": "ВсеИнструменты",
+        })
+
+    prices_all  = [x["price"] for x in listings if x["price"]]
+    prices_new  = prices_all[:]
+    prices_used = []
+
+    return {
+        "query": query,
+        "listings": listings,
+        "stats": _stats(prices_all, prices_new, prices_used, len(listings)),
+        "source": "vseinstrumenti.ru",
+        "from_cache": False,
+        "timestamp": ts,
+    }
+
+
+def _parse_tiu(html: str, query: str, limit: int, ts: str) -> Dict:
+    soup = BeautifulSoup(html, "lxml")
+    listings: List[Dict] = []
+
     cards = soup.select(".product-item, [class*='product_item'], .catalog-item, [data-product-id]")
     if not cards:
         cards = soup.select("li.item, div.item, .goods-item")
@@ -69,7 +146,7 @@ def _parse_tiu(html: str, query: str, limit: int, ts: str, avito_url: str) -> Di
         img_el = card.select_one("img")
         image = ""
         if img_el:
-            image = img_el.get("src") or img_el.get("data-src") or img_el.get("data-lazy-src") or ""
+            image = img_el.get("src") or img_el.get("data-src") or ""
             if image.startswith("//"):
                 image = "https:" + image
 
@@ -79,13 +156,10 @@ def _parse_tiu(html: str, query: str, limit: int, ts: str, avito_url: str) -> Di
             href = "https://tiu.ru" + href
 
         listings.append({
-            "title": title,
-            "price": price,
+            "title": title, "price": price,
             "price_text": price_text if price else "Цена не указана",
-            "condition": _cond(title),
-            "image": image,
-            "url": href,
-            "location": "tiu.ru",
+            "condition": _cond(title), "image": image,
+            "url": href, "location": "tiu.ru",
         })
 
     prices_all  = [x["price"] for x in listings if x["price"]]
@@ -93,13 +167,9 @@ def _parse_tiu(html: str, query: str, limit: int, ts: str, avito_url: str) -> Di
     prices_used = [x["price"] for x in listings if x["price"] and x["condition"] == "used"]
 
     return {
-        "query": query,
-        "listings": listings,
+        "query": query, "listings": listings,
         "stats": _stats(prices_all, prices_new, prices_used, len(listings)),
-        "source": "tiu.ru",
-        "avito_url": avito_url,
-        "from_cache": False,
-        "timestamp": ts,
+        "source": "tiu.ru", "from_cache": False, "timestamp": ts,
     }
 
 
@@ -127,11 +197,11 @@ def _stats(all_p, new_p, used_p, count) -> Dict:
             "used_avg":ua,"used_min":umn,"used_max":umx,
             "popularity":labels[lvl],"popularity_level":lvl}
 
-def _empty(query, error, ts, avito_url="") -> Dict:
-    return {"query":query,"listings":[],"avito_url":avito_url,
+def _empty(query, error, ts) -> Dict:
+    return {"query":query,"listings":[],
             "stats":{"avg_price":None,"min_price":None,"max_price":None,
                      "offer_count":0,"new_count":0,"used_count":0,
                      "new_avg":None,"new_min":None,"new_max":None,
                      "used_avg":None,"used_min":None,"used_max":None,
                      "popularity":"Нет данных","popularity_level":0},
-            "source":"tiu.ru","from_cache":False,"error":error,"timestamp":ts}
+            "source":"vseinstrumenti.ru","from_cache":False,"error":error,"timestamp":ts}

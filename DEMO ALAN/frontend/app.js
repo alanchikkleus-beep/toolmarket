@@ -597,4 +597,3 @@ function setupCalc() {
 }
 
 document.addEventListener("DOMContentLoaded", () => { init(); setupCalc(); renderHistory(); });
-  

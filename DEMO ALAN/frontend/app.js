@@ -395,9 +395,21 @@ function renderMarket() {
     </div>`;
   }
 
+  // Sort controls
+  if (d.listings?.length) {
+    const hasPrice = d.listings.some(x => x.price);
+    if (hasPrice) {
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.06em">Сортировка:</span>
+        <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('asc')">↑ Дешевле</button>
+        <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('desc')">↓ Дороже</button>
+      </div>`;
+    }
+  }
+
   // Listings
   if (d.listings?.length) {
-    html += `<div class="listings-grid">`;
+    html += `<div class="listings-grid" id="listings-grid">`;
     d.listings.forEach(item => {
       const condCls = COND_CLS[item.condition] || "cond-unknown";
       const condLabel = COND_LABEL[item.condition] || "—";
@@ -578,22 +590,4 @@ window.doHolderSearch = async function () {
       <div>${it.holders.map(h => `<span class="holder-tag">${esc(h)}</span>`).join("")}</div>
       <div style="margin-top:6px">${it.compatible_inserts.map(i => `<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
     </div>`).join("")}</div>`;
-  } catch (e) { res.innerHTML = `<div class="alert alert-warn">Ошибка: ${esc(e.message)}</div>`; }
-};
-
-/* ══ CALCULATOR ══ */
-function setupCalc() {
-  const price = $("#calc-price");
-  const qty = $("#calc-qty");
-  const res = $("#calc-result");
-  if (!price || !qty || !res) return;
-  function recalc() {
-    const p = parseFloat(price.value);
-    const q = parseFloat(qty.value);
-    res.textContent = (p > 0 && q > 0) ? (p * q).toLocaleString("ru-RU") + " ₽" : "—";
-  }
-  price.addEventListener("input", recalc);
-  qty.addEventListener("input", recalc);
-}
-
-document.addEventListener("DOMContentLoaded", () => { init(); setupCalc(); renderHistory(); });
+  

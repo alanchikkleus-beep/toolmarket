@@ -1,4 +1,4 @@
-import os
+    import os
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -27,13 +27,7 @@ async def market(
     category: str = Query("inserts"),
     limit: int = Query(24, ge=1, le=50),
 ):
-    cat_data = compat.get_categories().get(category, {})
-    keywords = cat_data.get("search_keywords", [])
-    if keywords:
-        search_q = f"{keywords[0]} {q}"
-    else:
-        search_q = q
-    return await scraper.search(search_q, category, limit)
+    return await scraper.search(q, category, limit)
 
 
 @app.get("/api/compatibility/{insert_code}")

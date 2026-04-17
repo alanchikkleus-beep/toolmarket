@@ -342,10 +342,14 @@ function renderMarket() {
     html += `<div class="alert alert-warn">⚠ ${esc(d.error)}</div>`;
   }
 
+  if (d.is_estimate) {
+    html += `<div class="alert alert-info">📊 Прямой поиск недоступен — показана <strong>рыночная оценка</strong> на основе базы данных. Для актуальных цен используйте ссылки на площадки выше.</div>`;
+  }
+
   // Section header
   html += `<div class="section-header">
     <span class="section-title">${CAT_ICONS[state.category] || ""} "${esc(state.query)}"</span>
-    <span class="source-badge">${esc(d.source || "tiu.ru")} · ${d.timestamp || ""}${d.from_cache ? ' · <span style="color:var(--warning)">кэш</span>' : ""}</span>
+    <span class="source-badge">${esc(d.source || "—")} · ${d.timestamp || ""}${d.from_cache ? ' · <span style="color:var(--warning)">кэш</span>' : ""}</span>
   </div>`;
 
   // Stats
@@ -582,10 +586,4 @@ function setupCalc() {
   function recalc() {
     const p = parseFloat(price.value);
     const q = parseFloat(qty.value);
-    res.textContent = (p > 0 && q > 0) ? (p * q).toLocaleString("ru-RU") + " ₽" : "—";
-  }
-  price.addEventListener("input", recalc);
-  qty.addEventListener("input", recalc);
-}
-
-document.addEventListener("DOMContentLoaded", () => { init(); setupCalc(); renderHistory(); });
+    res.textContent = (p > 0 && q > 0) ? (p * q).t

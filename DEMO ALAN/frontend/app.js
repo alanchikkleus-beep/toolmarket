@@ -197,14 +197,12 @@ async function api(path) {
 }
 
 async function init() {
-  // Сразу настраиваем UI — не ждём сервер
   setupCategoryBar();
   setupTabs();
   setupSearch();
   renderQuickChips();
   renderMarketEmpty();
 
-  // Загружаем данные в фоне
   try {
     [state.insertTypes, state.holders, state.categories] = await Promise.all([
       api("/api/insert-types"),
@@ -313,7 +311,6 @@ function renderMarket() {
   const s = d.stats || {};
   let html = "";
 
-  // Compare button
   const alreadyInCmp = cmpItems.find(x => x.query === state.query && x.category === state.category);
   html += `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn ${alreadyInCmp ? "btn-secondary" : "btn-primary"}" onclick="cmpAdd()" ${alreadyInCmp ? "disabled" : ""}>
@@ -322,7 +319,6 @@ function renderMarket() {
     ${cmpItems.length > 1 ? `<button class="btn btn-secondary" onclick="openCompare()">Открыть сравнение (${cmpItems.length})</button>` : ""}
   </div>`;
 
-  // Marketplace buttons
   const q = encodeURIComponent(state.query);
   const markets = [
     { label: "Авито", color: "#00aaff", text: "#fff", url: `https://www.avito.ru/rossiya?q=${q}` },
@@ -350,13 +346,11 @@ function renderMarket() {
     html += `<div class="alert alert-info">📊 Прямой поиск недоступен — показана <strong>рыночная оценка</strong> на основе базы данных. Для актуальных цен используйте ссылки на площадки выше.</div>`;
   }
 
-  // Section header
   html += `<div class="section-header">
     <span class="section-title">${CAT_ICONS[state.category] || ""} "${esc(state.query)}"</span>
     <span class="source-badge">${esc(d.source || "—")} · ${d.timestamp || ""}${d.from_cache ? ' · <span style="color:var(--warning)">кэш</span>' : ""}</span>
   </div>`;
 
-  // Stats
   html += `<div class="stats-row">
     <div class="stat-card">
       <div class="label">Средняя цена</div>
@@ -374,12 +368,10 @@ function renderMarket() {
     </div>
   </div>`;
 
-  // Market analysis block
   if (s.offer_count !== undefined) {
     html += renderMarketAnalysis(s);
   }
 
-  // New/Used split
   if (s.new_count > 0 || s.used_count > 0) {
     html += `<div class="price-split">
       <div class="price-box new-box">
@@ -395,7 +387,6 @@ function renderMarket() {
     </div>`;
   }
 
-  // Sort controls
   if (d.listings?.length) {
     const hasPrice = d.listings.some(x => x.price);
     if (hasPrice) {
@@ -407,7 +398,6 @@ function renderMarket() {
     }
   }
 
-  // Listings
   if (d.listings?.length) {
     html += `<div class="listings-grid" id="listings-grid">`;
     d.listings.forEach(item => {
@@ -590,4 +580,33 @@ window.doHolderSearch = async function () {
       <div>${it.holders.map(h => `<span class="holder-tag">${esc(h)}</span>`).join("")}</div>
       <div style="margin-top:6px">${it.compatible_inserts.map(i => `<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
     </div>`).join("")}</div>`;
-  
+  } catch (e) { res.innerHTML = `<div class="alert alert-warn">Ошибка: ${esc(e.message)}</div>`; }
+};
+
+/* ══ CALCULATOR ══ */
+function setupCalc() {
+  const price = $("#calc-price");
+  const qty = $("#calc-qty");
+  const res = $("#calc-result");
+  if (!price || !qty || !res) return;
+  function recalc() {
+    const p = parseFloat(price.value);
+    const q = parseFloat(qty.value);
+    res.textContent = (p > 0 && q > 0) ? (p * q).toLocaleString("ru-RU") + " ₽" : "—";
+  }
+  price.addEventListener("input", recalc);
+  qty.addEventListener("input", recalc);
+}
+
+window.sortListings = function(dir) {
+  if (!state.marketData?.listings) return;
+  const sorted = [...state.marketData.listings].sort((a, b) => {
+    const pa = a.price ?? (dir === 'asc' ? Infinity : -Infinity);
+    const pb = b.price ?? (dir === 'asc' ? Infinity : -Infinity);
+    return dir === 'asc' ? pa - pb : pb - pa;
+  });
+  state.marketData = { ...state.marketData, listings: sorted };
+  renderMarket();
+};
+
+document.addEventListener("DOMContentLoaded", () => { init(); setupCalc(); renderHistory(); });

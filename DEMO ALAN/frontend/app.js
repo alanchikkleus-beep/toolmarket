@@ -197,20 +197,24 @@ async function api(path) {
 }
 
 async function init() {
+  // Сразу настраиваем UI — не ждём сервер
+  setupCategoryBar();
+  setupTabs();
+  setupSearch();
+  renderQuickChips();
+  renderMarketEmpty();
+
+  // Загружаем данные в фоне
   try {
     [state.insertTypes, state.holders, state.categories] = await Promise.all([
       api("/api/insert-types"),
       api("/api/holders"),
       api("/api/categories"),
     ]);
+    renderQuickChips();
+    renderShapes();
+    renderHoldersTab();
   } catch (e) { console.warn(e); }
-  setupCategoryBar();
-  setupTabs();
-  setupSearch();
-  renderQuickChips();
-  renderMarketEmpty();
-  renderShapes();
-  renderHoldersTab();
 }
 
 function setupCategoryBar() {
@@ -586,4 +590,10 @@ function setupCalc() {
   function recalc() {
     const p = parseFloat(price.value);
     const q = parseFloat(qty.value);
-    res.textContent = (p > 0 && q > 0) ? (p * q).t
+    res.textContent = (p > 0 && q > 0) ? (p * q).toLocaleString("ru-RU") + " ₽" : "—";
+  }
+  price.addEventListener("input", recalc);
+  qty.addEventListener("input", recalc);
+}
+
+document.addEventListener("DOMContentLoaded", () => { init(); setupCalc(); renderHistory(); });

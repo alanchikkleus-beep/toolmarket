@@ -39,6 +39,15 @@ BRANDS = [
     ("Sandvik Coromant", 1.80),
 ]
 
+MARKETPLACES = [
+    ("Авито",           "https://www.avito.ru/rossiya?q="),
+    ("Яндекс Маркет",   "https://market.yandex.ru/search?text="),
+    ("Ozon",            "https://www.ozon.ru/search/?text="),
+    ("Wildberries",     "https://www.wildberries.ru/catalog/0/search.aspx?search="),
+    ("ВсеИнструменты",  "https://www.vseinstrumenti.ru/search/?q="),
+    ("220 Вольт",       "https://www.220-volt.ru/search/?query="),
+]
+
 
 class MarketScraper:
 
@@ -81,18 +90,32 @@ def _estimate_market(query: str, category: str) -> Dict:
     base_lo  = round(lo * size_m * grade_m / 10) * 10
     base_hi  = round(hi * size_m * grade_m / 10) * 10
 
+    q_enc = query.replace(" ", "+")
     listings: List[Dict] = []
+
+    # Карточки площадок
+    for market, base_url in MARKETPLACES:
+        listings.append({
+            "title": f"Найти «{query}» на {market}",
+            "price": None,
+            "price_text": "Перейти к поиску →",
+            "condition": "unknown",
+            "image": "",
+            "url": f"{base_url}{q_enc}",
+            "location": market,
+            "is_marketplace": True,
+        })
+
+    # Карточки с оценкой по брендам
     for brand, brand_m in BRANDS:
         price = round(base_avg * brand_m / 10) * 10
-        p_lo  = round(base_lo  * brand_m / 10) * 10
-        p_hi  = round(base_hi  * brand_m / 10) * 10
         listings.append({
             "title": f"{query} ({brand})",
             "price": price,
             "price_text": f"{price} \u20bd",
             "condition": "new",
             "image": "",
-            "url": f"https://www.vseinstrumenti.ru/search/?q={query.replace(' ', '+')}",
+            "url": f"https://www.vseinstrumenti.ru/search/?q={q_enc}",
             "location": brand,
         })
 

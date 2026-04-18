@@ -1,7 +1,7 @@
-import re
 import time
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
+from urllib.parse import quote_plus
 
 CACHE: Dict[str, Dict] = {}
 CACHE_TTL = 1800
@@ -39,27 +39,35 @@ BRANDS = [
     ("Sandvik Coromant", 1.80),
 ]
 
-MARKETPLACES = [
+# Специализированные площадки — полный запрос с артикулом и модификатором
+SPECIALIST_MARKETS = [
     ("ВсеИнструменты",   "https://www.vseinstrumenti.ru/search/?q="),
+    ("Pulscen.ru",        "https://pulscen.ru/search?query="),
+    ("Tiu.ru",            "https://tiu.ru/search?search[text]="),
     ("Tooling.ru",        "https://www.tooling.ru/search?q="),
-    ("Sandvik Coromant",  "https://www.sandvik.coromant.com/ru-ru/search#q="),
-    ("Iscar",             "https://www.iscar.com/eCatalog/item.aspx/lang/RU/Fnum/1?q="),
     ("МиринСтрумента",    "https://mirinstrumenta.ru/search/?q="),
     ("ПрофИнструмент",    "https://profiinstrument.ru/search/?q="),
     ("Ingol.ru",          "https://ingol.ru/search/?q="),
+    ("B2B-Center",        "https://www.b2b-center.ru/market/search.html?q="),
+    ("Satist.ru",         "https://satist.ru/search/?q="),
+    ("Sandvik Coromant",  "https://www.sandvik.coromant.com/ru-ru/search#q="),
+    ("Iscar",             "https://www.iscar.com/eCatalog/item.aspx/lang/RU/Fnum/1?q="),
+]
+
+# Общие маркетплейсы — только базовый артикул (без -SM S05F)
+GENERAL_MARKETS = [
     ("Авито",             "https://www.avito.ru/rossiya?q="),
     ("Яндекс Маркет",     "https://market.yandex.ru/search?text="),
     ("Ozon",              "https://www.ozon.ru/search/?text="),
     ("Wildberries",       "https://www.wildberries.ru/catalog/0/search.aspx?search="),
-    ("220 Вольт",         "https://www.220-volt.ru/search/?query="),
-    ("Leroy Merlin",      "https://leroymerlin.ru/search/?q="),
-    ("OBI",               "https://www.obi.ru/search/?q="),
-    ("Tiu.ru",            "https://tiu.ru/search?search[text]="),
-    ("Pulscen.ru",        "https://pulscen.ru/search?query="),
-    ("B2B-Center",        "https://www.b2b-center.ru/market/search.html?q="),
-    ("Satist.ru",         "https://satist.ru/search/?q="),
     ("Метро C&C",         "https://online.metro-cc.ru/search?in=&query="),
 ]
+
+
+def _base_query(query: str) -> str:
+    # "CNMG120412-SM S05F" → "CNMG120412"
+    # "CNMG 120408" → "CNMG 120408"
+    return query.split("-")[0].strip()
 
 
 class MarketScraper:
@@ -103,20 +111,31 @@ def _estimate_market(query: str, category: str) -> Dict:
             break
 
     base_avg = int(round((lo + hi) / 2 * size_m * grade_m / 10) * 10)
-    base_lo  = int(round(lo * size_m * grade_m / 10) * 10)
-    base_hi  = int(round(hi * size_m * grade_m / 10) * 10)
 
-    q_enc = query.replace(" ", "+")
+    q_full = quote_plus(query)
+    q_base = quote_plus(_base_query(query))
+
     listings: List[Dict] = []
 
-    for market_name, base_url in MARKETPLACES:
+    for market_name, base_url in SPECIALIST_MARKETS:
         listings.append({
             "title": "Найти на " + market_name,
             "price": None,
             "price_text": "Открыть поиск",
             "condition": "unknown",
             "image": "",
-            "url": base_url + q_enc,
+            "url": base_url + q_full,
+            "location": market_name,
+        })
+
+    for market_name, base_url in GENERAL_MARKETS:
+        listings.append({
+            "title": "Найти на " + market_name,
+            "price": None,
+            "price_text": "Открыть поиск",
+            "condition": "unknown",
+            "image": "",
+            "url": base_url + q_base,
             "location": market_name,
         })
 
@@ -128,7 +147,7 @@ def _estimate_market(query: str, category: str) -> Dict:
             "price_text": str(price) + " \u20bd",
             "condition": "new",
             "image": "",
-            "url": "https://www.vseinstrumenti.ru/search/?q=" + q_enc,
+            "url": "https://www.vseinstrumenti.ru/search/?q=" + q_full,
             "location": brand_name,
         })
 

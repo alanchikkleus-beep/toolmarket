@@ -41,25 +41,24 @@ BRANDS = [
 ]
 
 SPECIALIST_MARKETS = [
-    ("ВсеИнструменты",  "https://www.vseinstrumenti.ru/search/?q=",          "full"),
-    ("Pulscen.ru",       "https://pulscen.ru/search?q=",                       "full"),
-    ("Tiu.ru",           "https://tiu.ru/search?search[text]=",                "full"),
-    ("Tooling.ru",       "https://www.tooling.ru/search?q=",                   "full"),
-    ("МиринСтрумента",   "https://mirinstrumenta.ru/search/?q=",               "code"),
-    ("ПрофИнструмент",   "https://profiinstrument.ru/search/?q=",              "code"),
-    ("Ingol.ru",         "https://ingol.ru/search/?q=",                        "code"),
-    ("B2B-Center",       "https://www.b2b-center.ru/market/search.html?q=",   "full"),
-    ("Satist.ru",        "https://satist.ru/search/?q=",                       "base"),
-    ("Sandvik Coromant", "https://www.sandvik.coromant.com/ru-ru/search#q=",  "full"),
+    ("ВсеИнструменты",  "https://www.vseinstrumenti.ru/search/?q=",         "base"),
+    ("Pulscen.ru",       "https://pulscen.ru/search/?query=",                "code"),
+    ("Tooling.ru",       "https://www.tooling.ru/search?q=",                 "full"),
+    ("МиринСтрумента",   "https://mirinstrumenta.ru/search/?q=",             "code"),
+    ("ПрофИнструмент",   "https://profiinstrument.ru/search/?q=",            "code"),
+    ("Ingol.ru",         "https://ingol.ru/search/?q=",                      "code"),
+    ("B2B-Center",       "https://www.b2b-center.ru/market/search.html?q=",  "full"),
+    ("Satist.ru",        "https://satist.ru/search/?q=",                     "base"),
+    ("Sandvik Coromant", "https://www.sandvik.coromant.com/ru-ru/search#q=", "full"),
     ("Iscar",            "https://www.iscar.com/eCatalog/item.aspx/lang/RU/Fnum/1?q=", "base"),
 ]
 
 GENERAL_MARKETS = [
-    ("Авито",        "https://www.avito.ru/rossiya?q=",                          "base"),
-    ("Яндекс Маркет","https://market.yandex.ru/search?text=",                    "base"),
-    ("Ozon",         "https://www.ozon.ru/search/?text=",                        "base"),
-    ("Wildberries",  "https://www.wildberries.ru/catalog/0/search.aspx?search=", "base"),
-    ("Метро C&C",    "https://online.metro-cc.ru/search?in=&query=",             "base"),
+    ("Авито",         "https://www.avito.ru/rossiya?q=",                          "base"),
+    ("Яндекс Маркет", "https://market.yandex.ru/search?text=",                    "base"),
+    ("Ozon",          "https://www.ozon.ru/search/?text=",                        "base"),
+    ("Wildberries",   "https://www.wildberries.ru/catalog/0/search.aspx?search=", "base"),
+    ("Метро C&C",     "https://online.metro-cc.ru/search?in=&query=",             "base"),
 ]
 
 
@@ -91,7 +90,6 @@ def generate_variants(query: str) -> Dict[str, str]:
 
         base = sh + sz
         base_s = sh + " " + sz
-
         compact = sh + sz + cb + gr
     else:
         full = query.strip()
@@ -146,7 +144,6 @@ def _estimate_market(query: str, category: str) -> Dict:
 
     for market_name, base_url, var_key in SPECIALIST_MARKETS:
         q_enc = quote_plus(variants.get(var_key, variants["full"]))
-        var_label = {"full": "полный артикул", "code": "артикул+стружколом", "base": "базовый артикул"}.get(var_key, "")
         listings.append({
             "title": "Найти на " + market_name,
             "price": None,

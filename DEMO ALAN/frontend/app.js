@@ -565,97 +565,205 @@ function renderTab(){
 function renderMarketEmpty(){$("#tab-market").innerHTML=empty("🔍","Выберите категорию и введите название инструмента");}
 
 /* ══ MARKET ══ */
-function renderMarket(){
-  const p=$("#tab-market");
-  if (state.loading){p.innerHTML=loader();return;}
-  if (!state.marketData){p.innerHTML=empty("🔍","Введите запрос");return;}
-  const d=state.marketData,s=d.stats||{};let html="";
+function renderMarket() {
+  const p = $("#tab-market");
+  if (state.loading) { p.innerHTML = loader(); return; }
+  if (!state.marketData) { p.innerHTML = empty("🔍", "Введите запрос"); return; }
 
-  const alreadyInCmp=cmpItems.find(x=>x.query===state.query&&x.category===state.category);
-  const watched=isWatched(state.query);
-  html+=`<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn ${alreadyInCmp?"btn-secondary":"btn-primary"}" onclick="cmpAdd()" ${alreadyInCmp?"disabled":""}>
-      ${alreadyInCmp?"✅ Добавлено":"⚖️ Сравнить"}
+  const d = state.marketData;
+  const s = d.stats || {};
+  const ms = d.market_summary || {};
+  const sources = d.specialist_sources || [];
+  let html = "";
+
+  // Кнопки действий
+  const alreadyInCmp = cmpItems.find(x => x.query === state.query && x.category === state.category);
+  const watched = isWatched(state.query);
+  html += `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn ${alreadyInCmp ? "btn-secondary" : "btn-primary"}" onclick="cmpAdd()" ${alreadyInCmp ? "disabled" : ""}>
+      ${alreadyInCmp ? "✅ Добавлено" : "⚖️ Сравнить"}
     </button>
-    <button class="btn btn-secondary" onclick="toggleWatch()" style="${watched?"border-color:var(--accent);color:var(--accent)":""}">
-      ${watched?"⭐ Отслеживается":"☆ Отслеживать"}
+    <button class="btn btn-secondary" onclick="toggleWatch()" style="${watched ? "border-color:var(--accent);color:var(--accent)" : ""}">
+      ${watched ? "⭐ Отслеживается" : "☆ Отслеживать"}
     </button>
-    ${cmpItems.length>1?`<button class="btn btn-secondary" onclick="openCompare()">Сравнение (${cmpItems.length})</button>`:""}
+    ${cmpItems.length > 1 ? `<button class="btn btn-secondary" onclick="openCompare()">Сравнение (${cmpItems.length})</button>` : ""}
   </div>`;
 
-  const q=encodeURIComponent(state.query);
-  const markets=[
-    {label:"Авито",color:"#00aaff",text:"#fff",url:`https://www.avito.ru/rossiya?q=${q}`},
-    {label:"Яндекс Маркет",color:"#ffcc00",text:"#000",url:`https://market.yandex.ru/search?text=${q}`},
-    {label:"Ozon",color:"#005bff",text:"#fff",url:`https://www.ozon.ru/search/?text=${q}&from_global=true`},
-    {label:"Wildberries",color:"#cb11ab",text:"#fff",url:`https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`},
-    {label:"ВсеИнструменты",color:"#e8380d",text:"#fff",url:`https://www.vseinstrumenti.ru/search/?q=${q}`},
-    {label:"220 Вольт",color:"#ff8800",text:"#fff",url:`https://www.220-volt.ru/search/?query=${q}`},
-    {label:"Sandvik",color:"#1a3a5c",text:"#ffd700",url:`https://www.sandvik.coromant.com/ru-ru/search#q=${q}`},
-    {label:"Iscar",color:"#0057a8",text:"#fff",url:`https://www.iscar.com/eCatalog/item.aspx/lang/RU/Fnum/1?q=${q}`},
-    {label:"Абамет",color:"#2d6a4f",text:"#fff",url:`https://abamet.ru/search/?q=${q}`},
-    {label:"Метро C&C",color:"#cc0000",text:"#fff",url:`https://online.metro-cc.ru/search?in=&query=${q}`},
+  // 5 основных кликабельных площадок
+  const q = encodeURIComponent(state.query);
+  const mainMarkets = [
+    { label: "Авито",          color: "#00aaff", text: "#fff", url: `https://www.avito.ru/rossiya?q=${q}` },
+    { label: "Яндекс Маркет", color: "#ffcc00", text: "#000", url: `https://market.yandex.ru/search?text=${q}` },
+    { label: "Ozon",           color: "#005bff", text: "#fff", url: `https://www.ozon.ru/search/?text=${q}&from_global=true` },
+    { label: "Wildberries",    color: "#cb11ab", text: "#fff", url: `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}` },
+    { label: "ВсеИнструменты",color: "#e8380d", text: "#fff", url: `https://www.vseinstrumenti.ru/search/?q=${q}` },
   ];
-  html+=`<div class="marketplace-section"><div class="marketplace-label">Найти на площадках</div>
-    <div class="marketplace-grid">
-      ${markets.map(m=>`<a href="${esc(m.url)}" target="_blank" rel="noopener" class="market-btn" style="background:${m.color};color:${m.text}">${esc(m.label)}</a>`).join("")}
+  html += `<div class="marketplace-section">
+    <div class="marketplace-label">🔗 Найти на площадках</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      ${mainMarkets.map(m => `<a href="${esc(m.url)}" target="_blank" rel="noopener" class="market-btn" style="background:${m.color};color:${m.text};font-size:.82rem;padding:8px 14px">${esc(m.label)}</a>`).join("")}
     </div>
   </div>`;
 
-  if (d.error&&!d.listings?.length) html+=`<div class="alert alert-warn">⚠ ${esc(d.error)}</div>`;
-  if (d.is_estimate) html+=`<div class="alert alert-info">📊 Показана <strong>рыночная оценка</strong>. Для актуальных цен используйте ссылки выше.</div>`;
+  if (d.is_estimate) html += `<div class="alert alert-info">📊 Показана <strong>рыночная оценка</strong> на основе базы данных. Нажмите на площадку выше для актуальных цен.</div>`;
 
-  html+=`<div class="section-header">
-    <span class="section-title">${CAT_ICONS[state.category]||""} "${esc(state.query)}"</span>
-    <span class="source-badge">${esc(d.source||"—")} · ${d.timestamp||""}${d.from_cache?' · <span style="color:var(--warning)">кэш</span>':""}</span>
+  html += `<div class="section-header">
+    <span class="section-title">${CAT_ICONS[state.category] || ""} "${esc(state.query)}"</span>
+    <span class="source-badge">${esc(d.source || "—")} · ${d.timestamp || ""}${d.from_cache ? ' · <span style="color:var(--warning)">кэш</span>' : ""}</span>
   </div>`;
 
-  html+=`<div class="stats-row">
-    <div class="stat-card"><div class="label">Средняя цена</div><div class="value green">${fmt(s.avg_price)}</div>
-      ${s.min_price!=null?`<div style="font-size:.72rem;color:var(--dim);margin-top:3px">Мин: ${fmt(s.min_price)} · Макс: ${fmt(s.max_price)}</div>`:""}
+  // Основные статы
+  html += `<div class="stats-row">
+    <div class="stat-card">
+      <div class="label">Средняя цена</div>
+      <div class="value green">${fmt(s.avg_price)}</div>
+      ${s.min_price != null ? `<div style="font-size:.72rem;color:var(--dim);margin-top:3px">Мин: ${fmt(s.min_price)} · Макс: ${fmt(s.max_price)}</div>` : ""}
     </div>
-    <div class="stat-card"><div class="label">Предложений</div><div class="value blue">${s.offer_count||0}</div></div>
-    <div class="stat-card"><div class="label">Популярность</div><div class="value orange">${s.popularity||"—"}</div>
-      <div class="pop-bar">${[1,2,3,4,5].map(i=>`<div class="pop-dot${i<=(s.popularity_level||0)?" filled":""}"></div>`).join("")}</div>
+    <div class="stat-card">
+      <div class="label">Предложений</div>
+      <div class="value blue">${ms.total_offers || s.offer_count || 0}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Популярность</div>
+      <div class="value orange">${s.popularity || "—"}</div>
+      <div class="pop-bar">${[1,2,3,4,5].map(i => `<div class="pop-dot${i <= (s.popularity_level || 0) ? " filled" : ""}"></div>`).join("")}</div>
     </div>
   </div>`;
 
-  if (s.offer_count!==undefined) html+=renderMarketAnalysis(s);
+  // Анализ рынка
+  if (s.offer_count !== undefined) html += renderMarketAnalysis(s);
 
-  if (s.new_count>0||s.used_count>0) {
-    html+=`<div class="price-split">
-      <div class="price-box new-box"><div class="pb-label">✅ Новый (${s.new_count||0} шт)</div><div class="pb-val">${fmt(s.new_avg)}</div>${s.new_min!=null?`<div class="pb-range">от ${fmt(s.new_min)} до ${fmt(s.new_max)}</div>`:""}</div>
-      <div class="price-box used-box"><div class="pb-label">🔄 Б/У (${s.used_count||0} шт)</div><div class="pb-val">${fmt(s.used_avg)}</div>${s.used_min!=null?`<div class="pb-range">от ${fmt(s.used_min)} до ${fmt(s.used_max)}</div>`:""}</div>
+  // ── Вывод по рынку ──
+  if (ms.market_avg) {
+    const spreadColor = ms.spread_pct > 50 ? "#fc8181" : ms.spread_pct > 25 ? "#ed8936" : "#48bb78";
+    const rarityIcon = ms.rarity === "Редкий товар" ? "💎" : ms.rarity === "Ограниченное предложение" ? "⚡" : ms.rarity === "Умеренное предложение" ? "📦" : "✅";
+    html += `<div class="market-analysis" style="margin-top:16px">
+      <div class="analysis-header">
+        <div class="analysis-title">📋 Вывод по рынку</div>
+        <div class="rarity-badge rarity-limited">${rarityIcon} ${esc(ms.rarity)}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+        <div style="background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--border)">
+          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Минимум по рынку</div>
+          <div style="font-weight:700;color:#48bb78;font-size:1rem">${fmt(ms.market_min)}</div>
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--border)">
+          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Средняя по рынку</div>
+          <div style="font-weight:700;color:var(--accent);font-size:1rem">${fmt(ms.market_avg)}</div>
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--border)">
+          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Максимум по рынку</div>
+          <div style="font-weight:700;color:#fc8181;font-size:1rem">${fmt(ms.market_max)}</div>
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--border)">
+          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Выгодная цена</div>
+          <div style="font-weight:700;color:#48bb78;font-size:.9rem">${ms.good_min && ms.good_max ? `${fmt(ms.good_min)} – ${fmt(ms.good_max)}` : "—"}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:.78rem;color:var(--dim)">Разброс цен: <span style="color:${spreadColor};font-weight:600">${ms.spread_pct}% · ${esc(ms.spread_label)}</span></div>
+      </div>
     </div>`;
   }
 
+  // ── Дополнительные источники ──
+  if (sources.length) {
+    html += `<div style="margin-top:20px">
+      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">📦 Дополнительные источники рынка</div>
+      <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">`;
+
+    sources.forEach((src, i) => {
+      const isLast = i === sources.length - 1;
+      const borderBottom = isLast ? "" : "border-bottom:1px solid var(--border)";
+      if (src.status === "no_data") {
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${borderBottom}">
+          <div>
+            <span style="font-weight:600;font-size:.85rem">${esc(src.name)}</span>
+            <span style="font-size:.72rem;color:var(--dim);margin-left:8px;background:var(--bg);padding:2px 6px;border-radius:4px">${esc(src.type)}</span>
+          </div>
+          <div style="font-size:.75rem;color:var(--dim);font-style:italic">данных недостаточно</div>
+        </div>`;
+      } else {
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${borderBottom};flex-wrap:wrap;gap:6px">
+          <div>
+            <span style="font-weight:600;font-size:.85rem">${esc(src.name)}</span>
+            <span style="font-size:.72rem;color:var(--dim);margin-left:8px;background:var(--bg);padding:2px 6px;border-radius:4px">${esc(src.type)}</span>
+          </div>
+          <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+            <div style="text-align:center">
+              <div style="font-size:.68rem;color:var(--dim)">мин</div>
+              <div style="font-size:.82rem;color:#48bb78;font-weight:600">${fmt(src.min_price)}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:.68rem;color:var(--dim)">средняя</div>
+              <div style="font-size:.82rem;color:var(--accent);font-weight:700">${fmt(src.avg_price)}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:.68rem;color:var(--dim)">макс</div>
+              <div style="font-size:.82rem;color:#fc8181;font-weight:600">${fmt(src.max_price)}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:.68rem;color:var(--dim)">предл.</div>
+              <div style="font-size:.82rem;font-weight:600">${src.count} шт</div>
+            </div>
+          </div>
+        </div>`;
+      }
+    });
+    html += `</div>
+      <div style="font-size:.7rem;color:var(--dim);margin-top:6px">* Источник учтён только в аналитике — прямой переход не гарантирует результат</div>
+    </div>`;
+  }
+
+  // Новый/Б.У.
+  if (s.new_count > 0 || s.used_count > 0) {
+    html += `<div class="price-split" style="margin-top:16px">
+      <div class="price-box new-box">
+        <div class="pb-label">✅ Новый (${s.new_count || 0} шт)</div>
+        <div class="pb-val">${fmt(s.new_avg)}</div>
+        ${s.new_min != null ? `<div class="pb-range">от ${fmt(s.new_min)} до ${fmt(s.new_max)}</div>` : ""}
+      </div>
+      <div class="price-box used-box">
+        <div class="pb-label">🔄 Б/У (${s.used_count || 0} шт)</div>
+        <div class="pb-val">${fmt(s.used_avg)}</div>
+        ${s.used_min != null ? `<div class="pb-range">от ${fmt(s.used_min)} до ${fmt(s.used_max)}</div>` : ""}
+      </div>
+    </div>`;
+  }
+
+  // Листинги по брендам
   if (d.listings?.length) {
-    if (d.listings.some(x=>x.price)) {
-      html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-        <span style="font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.06em">Сортировка:</span>
-        <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('asc')">↑ Дешевле</button>
-        <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('desc')">↓ Дороже</button>
+    const hasPrice = d.listings.some(x => x.price);
+    if (hasPrice) {
+      html += `<div style="margin-top:16px">
+        <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">🏆 Оценка по брендам</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('asc')">↑ Дешевле</button>
+          <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('desc')">↓ Дороже</button>
+        </div>
       </div>`;
     }
-    html+=`<div class="listings-grid" id="listings-grid">`;
-    d.listings.forEach(item=>{
-      const condCls=COND_CLS[item.condition]||"cond-unknown",condLabel=COND_LABEL[item.condition]||"—";
-      const imgHtml=item.image?`<img class="listing-img" src="${esc(item.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:"";;
-      const placeholder=`<div class="listing-img-placeholder" ${item.image?"style='display:none'":""}>${CAT_ICONS[state.category]||"🔧"}</div>`;
-      html+=`<a class="listing-card" href="${esc(item.url||"#")}" target="_blank" rel="noopener">
-        ${imgHtml}${placeholder}
+    html += `<div class="listings-grid" id="listings-grid">`;
+    d.listings.forEach(item => {
+      const condCls = COND_CLS[item.condition] || "cond-unknown";
+      const condLabel = COND_LABEL[item.condition] || "—";
+      const placeholder = `<div class="listing-img-placeholder">${CAT_ICONS[state.category] || "🔧"}</div>`;
+      html += `<a class="listing-card" href="${esc(item.url || "#")}" target="_blank" rel="noopener">
+        ${placeholder}
         <div class="listing-body">
           <div class="listing-title">${esc(item.title)}</div>
-          <div class="${item.price?"listing-price":"listing-price no-price"}">${item.price?fmt(item.price):esc(item.price_text)}</div>
-          <div class="listing-meta"><span class="cond-badge ${condCls}">${condLabel}</span>${item.location?`<span class="listing-loc">📍 ${esc(item.location)}</span>`:""}</div>
+          <div class="${item.price ? "listing-price" : "listing-price no-price"}">${item.price ? fmt(item.price) : esc(item.price_text)}</div>
+          <div class="listing-meta">
+            <span class="cond-badge ${condCls}">${condLabel}</span>
+            ${item.location ? `<span class="listing-loc">📍 ${esc(item.location)}</span>` : ""}
+          </div>
         </div>
       </a>`;
     });
-    html+=`</div>`;
-  } else {
-    html+=empty("📭","Объявлений не найдено. Используйте ссылки выше.");
+    html += `</div>`;
   }
-  p.innerHTML=html;
+
+  p.innerHTML = html;
 }
 
 /* ══ COMPAT ══ */

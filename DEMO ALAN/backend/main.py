@@ -29,8 +29,18 @@ async def js(): return FileResponse(os.path.join(FRONTEND, "app.js"))
 @app.get("/favicon.ico")
 async def favicon(): return FileResponse(os.path.join(FRONTEND, "favicon.ico"))
 
+@app.get("/reset-password")
+async def reset_page(): return FileResponse(os.path.join(FRONTEND, "index.html"))
+
 class AuthBody(BaseModel):
     email: str
+    password: str
+
+class ForgotBody(BaseModel):
+    email: str
+
+class ResetBody(BaseModel):
+    token: str
     password: str
 
 @app.post("/api/auth/register")
@@ -61,6 +71,20 @@ async def me(session: Optional[str] = Cookie(None)):
     user = auth.get_user_by_token(session)
     if not user: return JSONResponse(status_code=401, content={"ok": False})
     return {"ok": True, "email": user["email"], "id": user["id"]}
+
+@app.post("/api/auth/forgot")
+async def forgot(body: ForgotBody):
+    result = auth.create_reset_token(body.email)
+    if result["ok"]:
+        return {"ok": True, "message": "Письмо отправлено"}
+    return JSONResponse(status_code=400, content=result)
+
+@app.post("/api/auth/reset")
+async def reset(body: ResetBody, response: Response):
+    result = auth.reset_password(body.token, body.password)
+    if result["ok"]:
+        return {"ok": True}
+    return JSONResponse(status_code=400, content=result)
 
 class WatchBody(BaseModel):
     query: str

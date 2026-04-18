@@ -10,9 +10,110 @@ const state = {
   holders: null,
   categories: null,
   loading: false,
+  user: null,
 };
 
 const cmpItems = [];
+
+/* ══ AUTH ══ */
+async function checkAuth() {
+  try {
+    const r = await fetch("/api/auth/me");
+    if (r.ok) { state.user = await r.json(); }
+    else { state.user = null; }
+  } catch { state.user = null; }
+  renderAuthBar();
+}
+
+function renderAuthBar() {
+  let bar = document.getElementById("auth-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "auth-bar";
+    bar.style.cssText = "margin-left:8px;display:flex;align-items:center;gap:8px";
+    const header = document.querySelector("header div[style*='margin-left:auto']");
+    if (header) header.parentNode.insertBefore(bar, header);
+  }
+  if (state.user) {
+    bar.innerHTML = `<span style="font-size:.8rem;color:var(--muted)">${esc(state.user.email)}</span>
+      <button class="btn btn-secondary" style="padding:5px 12px;font-size:.78rem" onclick="doLogout()">Выйти</button>`;
+  } else {
+    bar.innerHTML = `<button class="btn btn-primary" style="padding:5px 14px;font-size:.78rem" onclick="showAuthModal()">Войти / Регистрация</button>`;
+  }
+}
+
+async function doLogout() {
+  await fetch("/api/auth/logout", { method: "POST" });
+  state.user = null;
+  renderAuthBar();
+}
+
+function showAuthModal(tab) {
+  tab = tab || "login";
+  let m = document.getElementById("auth-modal");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "auth-modal";
+    m.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1000";
+    m.onclick = e => { if (e.target === m) m.remove(); };
+    document.body.appendChild(m);
+  }
+  m.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:340px;max-width:95vw">
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <button id="tab-login-btn" class="btn ${tab==="login"?"btn-primary":"btn-secondary"}" style="flex:1" onclick="showAuthModal('login')">Войти</button>
+      <button id="tab-reg-btn" class="btn ${tab==="register"?"btn-primary":"btn-secondary"}" style="flex:1" onclick="showAuthModal('register')">Регистрация</button>
+    </div>
+    <div id="auth-form-body"></div>
+  </div>`;
+  renderAuthForm(tab);
+}
+
+function renderAuthForm(tab) {
+  const body = document.getElementById("auth-form-body");
+  if (!body) return;
+  if (tab === "forgot") {
+    body.innerHTML = `<div style="font-size:.85rem;color:var(--muted);margin-bottom:12px">Введите email — пришлём ссылку для сброса пароля</div>
+      <input id="af-email" type="email" placeholder="Email" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:12px;box-sizing:border-box">
+      <button class="btn btn-primary" style="width:100%" onclick="submitForgot()">Отправить письмо</button>
+      <div style="text-align:center;margin-top:10px"><span style="font-size:.78rem;color:var(--accent);cursor:pointer" onclick="showAuthModal('login')">← Назад</span></div>
+      <div id="auth-msg" style="margin-top:10px;font-size:.82rem;text-align:center"></div>`;
+    return;
+  }
+  body.innerHTML = `<input id="af-email" type="email" placeholder="Email" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:10px;box-sizing:border-box">
+    <input id="af-pass" type="password" placeholder="Пароль" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:14px;box-sizing:border-box">
+    <button class="btn btn-primary" style="width:100%" onclick="submitAuth('${tab}')">${tab==="login"?"Войти":"Зарегистрироваться"}</button>
+    ${tab==="login" ? `<div style="text-align:center;margin-top:10px"><span style="font-size:.78rem;color:var(--accent);cursor:pointer" onclick="renderAuthForm('forgot')">Забыли пароль?</span></div>` : ""}
+    <div id="auth-msg" style="margin-top:10px;font-size:.82rem;text-align:center;color:#fc8181"></div>`;
+}
+
+async function submitForgot() {
+  const email = document.getElementById("af-email")?.value.trim();
+  const msg = document.getElementById("auth-msg");
+  if (!email) { if(msg) msg.textContent = "Введите email"; return; }
+  try {
+    const r = await fetch("/api/auth/forgot", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({email}) });
+    const d = await r.json();
+    if (msg) { msg.style.color = "var(--success)"; msg.textContent = d.message || "Письмо отправлено!"; }
+  } catch(e) { if(msg) msg.textContent = "Ошибка отправки"; }
+}
+
+async function submitAuth(tab) {
+  const email = document.getElementById("af-email")?.value.trim();
+  const pass = document.getElementById("af-pass")?.value;
+  const msg = document.getElementById("auth-msg");
+  if (!email || !pass) { if(msg) msg.textContent = "Заполните все поля"; return; }
+  try {
+    const r = await fetch(`/api/auth/${tab}`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({email, password:pass}) });
+    const d = await r.json();
+    if (r.ok) {
+      state.user = d;
+      renderAuthBar();
+      document.getElementById("auth-modal")?.remove();
+    } else {
+      if (msg) msg.textContent = d.detail || "Ошибка";
+    }
+  } catch(e) { if(msg) msg.textContent = "Ошибка соединения"; }
+}
 
 /* ── Market Analysis Helpers ── */
 function calcRarity(stats) {
@@ -619,4 +720,177 @@ function renderShapes() {
   Object.entries(cats).forEach(([k, c]) => {
     const subs = Object.entries(c.subtypes || {});
     html += `<div class="brand-card">
-      <div class="brand
+      <div class="brand-header">
+        <div style="font-size:1.4rem">${c.icon || ""}</div>
+        <div><div class="brand-name">${esc(c.name)}</div><div class="brand-country">Единица: ${esc(c.unit || "шт")}</div></div>
+      </div>
+      ${subs.length ? `<div style="margin-bottom:6px">${subs.map(([, v]) => `<span class="app-tag" style="margin:2px;font-size:.73rem">${esc(v)}</span>`).join("")}</div>` : ""}
+      ${(c.popular || []).slice(0, 4).map(x => `<span class="insert-tag" onclick="selectCatAndSearch('${k}','${esc(x)}')">${esc(x)}</span>`).join("")}
+    </div>`;
+  });
+  html += `</div>`;
+
+  html += `<div class="section-title" style="margin-bottom:10px">Формы сменных пластин (ISO 1832)</div><div class="shape-grid">`;
+  Object.entries(shapes).forEach(([code, s]) => {
+    html += `<div class="shape-card" onclick="showShapeDetail('${code}')"><div class="shape-code">${code}</div><div class="shape-name">${esc(s.name)}</div></div>`;
+  });
+  html += `</div><div id="shape-detail"></div>`;
+
+  html += `<div class="section-title" style="margin:18px 0 10px">Группы материалов ISO 513</div><div class="mat-grid">`;
+  Object.entries(mats).forEach(([code, m]) => {
+    html += `<div class="mat-badge"><div class="mat-dot" style="background:${esc(m.color)}"></div><div><strong>${code}</strong> — ${esc(m.name)}<div style="font-size:.7rem;color:var(--dim)">${esc(m.description)}</div></div></div>`;
+  });
+  html += `</div>`;
+  p.innerHTML = html;
+}
+
+window.selectCatAndSearch = function (cat, q) {
+  $$(".cat-btn").forEach(b => b.classList.toggle("active", b.dataset.cat === cat));
+  state.category = cat;
+  state.categoryManual = true;
+  renderQuickChips();
+  setQuery(q);
+  $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "market"));
+  state.tab = "market";
+  renderTab();
+};
+
+window.showShapeDetail = function (code) {
+  const shapes = state.insertTypes?.shapes || {};
+  const s = shapes[code]; if (!s) return;
+  $$(".shape-card").forEach(c => c.classList.toggle("active", c.querySelector(".shape-code")?.textContent === code));
+  $("#shape-detail").innerHTML = `<div class="card" style="margin-top:10px">
+    <div class="card-title">${code} — ${esc(s.name)}</div>
+    <p style="font-size:.84rem;color:var(--muted);margin-bottom:10px">${esc(s.description)}</p>
+    <div class="app-tags">${s.applications.map(a => `<span class="app-tag">${esc(a)}</span>`).join("")}</div>
+  </div>`;
+};
+
+/* ══ HOLDERS ══ */
+function renderHoldersTab() {
+  const p = $("#tab-holders");
+  if (!state.holders) { p.innerHTML = loader(); return; }
+  let html = `<div class="section-title" style="margin-bottom:12px">Поиск по держателю</div>
+    <div class="holder-search-row">
+      <input id="holder-input" type="text" placeholder="Начало кода держателя, например PCLNR...">
+      <button class="btn btn-secondary" onclick="doHolderSearch()">Найти</button>
+    </div>
+    <div id="holder-results"></div>
+    <div class="section-title" style="margin:16px 0 10px">Все держатели по брендам</div>
+    <div class="brands-grid">`;
+
+  state.holders.forEach(brand => {
+    html += `<div class="brand-card">
+      <div class="brand-header">
+        <div class="brand-dot" style="background:${esc(brand.logo_color)}"></div>
+        <div><div class="brand-name">${esc(brand.brand)}</div><div class="brand-country">${esc(brand.country)}</div></div>
+      </div>`;
+    brand.lines.forEach(line => {
+      html += `<div style="margin-bottom:10px">
+        <div class="brand-line">${esc(line.name)}</div>
+        <div class="brand-desc">${esc(line.description)}</div>
+        <div>${line.holders.slice(0, 4).map(h => `<span class="holder-tag">${esc(h)}</span>`).join("")}</div>
+        <div style="margin-top:4px">${line.inserts.slice(0, 4).map(i => `<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  html += `</div>`;
+  p.innerHTML = html;
+}
+
+window.doHolderSearch = async function () {
+  const inp = $("#holder-input"); if (!inp) return;
+  const prefix = inp.value.trim();
+  const res = $("#holder-results");
+  if (!prefix) { res.innerHTML = ""; return; }
+  res.innerHTML = loader();
+  try {
+    const data = await api(`/api/search-by-holder?prefix=${encodeURIComponent(prefix)}`);
+    if (!data.length) { res.innerHTML = empty("🔍", "Не найдено"); return; }
+    res.innerHTML = `<div class="brands-grid">${data.map(it => `<div class="brand-card">
+      <div class="brand-name" style="margin-bottom:6px">${esc(it.brand)} — ${esc(it.line)}</div>
+      <div>${it.holders.map(h => `<span class="holder-tag">${esc(h)}</span>`).join("")}</div>
+      <div style="margin-top:6px">${it.compatible_inserts.map(i => `<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
+    </div>`).join("")}</div>`;
+  } catch (e) { res.innerHTML = `<div class="alert alert-warn">Ошибка: ${esc(e.message)}</div>`; }
+};
+
+/* ══ CALCULATOR ══ */
+function setupCalc() {
+  const price = $("#calc-price");
+  const qty = $("#calc-qty");
+  const res = $("#calc-result");
+  if (!price || !qty || !res) return;
+  function recalc() {
+    const p = parseFloat(price.value);
+    const q = parseFloat(qty.value);
+    res.textContent = (p > 0 && q > 0) ? (p * q).toLocaleString("ru-RU") + " ₽" : "—";
+  }
+  price.addEventListener("input", recalc);
+  qty.addEventListener("input", recalc);
+}
+
+window.sortListings = function(dir) {
+  if (!state.marketData?.listings) return;
+  const sorted = [...state.marketData.listings].sort((a, b) => {
+    const pa = a.price ?? (dir === 'asc' ? Infinity : -Infinity);
+    const pb = b.price ?? (dir === 'asc' ? Infinity : -Infinity);
+    return dir === 'asc' ? pa - pb : pb - pa;
+  });
+  state.marketData = { ...state.marketData, listings: sorted };
+  renderMarket();
+};
+
+/* ══ WATCHLIST ══ */
+function getWatchlist() { try { return JSON.parse(localStorage.getItem("watchlist") || "[]"); } catch { return []; } }
+function saveWatchlist(w) { localStorage.setItem("watchlist", JSON.stringify(w)); updateWatchBadge(); }
+function isWatched(q) { return getWatchlist().some(x => x.query === q); }
+
+function toggleWatch(q, cat) {
+  let w = getWatchlist();
+  const idx = w.findIndex(x => x.query === q);
+  if (idx >= 0) { w.splice(idx, 1); }
+  else {
+    const s = state.marketData?.stats || {};
+    w.unshift({ query: q, category: cat, price: s.avg_price || null, addedAt: Date.now() });
+  }
+  saveWatchlist(w);
+  renderMarket();
+  if (state.tab === "watch") renderWatchlist();
+}
+
+function updateWatchBadge() {
+  const w = getWatchlist();
+  const badge = $("#watch-badge");
+  if (!badge) return;
+  badge.textContent = w.length;
+  badge.style.display = w.length ? "" : "none";
+}
+
+function renderWatchlist() {
+  const p = $("#tab-watch");
+  if (!p) return;
+  const w = getWatchlist();
+  if (!w.length) { p.innerHTML = empty("⭐", "Список пуст — добавьте позиции кнопкой ☆ В список"); return; }
+  let html = `<div class="section-title" style="margin-bottom:12px">⭐ Список наблюдения (${w.length})</div><div class="listings-grid">`;
+  w.forEach(item => {
+    html += `<div class="listing-card" style="cursor:default">
+      <div class="listing-img-placeholder">${CAT_ICONS[item.category] || "🔧"}</div>
+      <div class="listing-body">
+        <div class="listing-title" style="cursor:pointer" onclick="setQuery('${item.query.replace(/'/g,"\\'")}')">
+          ${esc(item.query)}
+        </div>
+        <div class="listing-price">${item.price ? fmt(item.price) : "—"}</div>
+        <div class="listing-meta">
+          <span class="cond-badge cond-new">${CAT_ICONS[item.category] || ""} ${esc(CAT_LABELS[item.category] || item.category)}</span>
+          <span style="cursor:pointer;color:#fc8181;font-size:.75rem" onclick="toggleWatch('${item.query.replace(/'/g,"\\'")}','${item.category}')">✕ Удалить</span>
+        </div>
+      </div>
+    </div>`;
+  });
+  html += `</div>`;
+  p.innerHTML = html;
+}
+
+document.addEventListener("DOMContentLoaded", () => { init(); setupCalc(); renderHistory(); updateWatchBadge(); checkAuth(); });

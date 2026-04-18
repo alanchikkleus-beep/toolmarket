@@ -13,6 +13,39 @@ const state = {
 
 const cmpItems = [];
 
+/* ── Price History ── */
+function getItemHistory(q, cat) {
+  try { return JSON.parse(localStorage.getItem(`ph_${q}_${cat}`) || "[]"); } catch { return []; }
+}
+function addPriceHistory(q, cat, price) {
+  if (!price) return;
+  let h = getItemHistory(q, cat);
+  h.push({ price, date: new Date().toISOString() });
+  h = h.slice(-30);
+  localStorage.setItem(`ph_${q}_${cat}`, JSON.stringify(h));
+}
+function renderSparkline(history) {
+  if (!history || history.length < 2) return "";
+  const prices = history.map(x => x.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const w = 120, h = 36, pad = 4;
+  const pts = prices.map((p, i) => {
+    const x = pad + (i / (prices.length - 1)) * (w - pad * 2);
+    const y = pad + (1 - (p - min) / range) * (h - pad * 2);
+    return `${x},${y}`;
+  }).join(" ");
+  const last = prices[prices.length - 1];
+  const first = prices[0];
+  const color = last >= first ? "#fc8181" : "#48bb78";
+  const lx = pad + (w - pad * 2), ly = pad + (1 - (last - min) / range) * (h - pad * 2);
+  return `<svg width="${w}" height="${h}" style="display:block;margin-top:6px">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="${lx}" cy="${ly}" r="2.5" fill="${color}"/>
+  </svg>`;
+}
+
 /* ── Watchlist ── */
 function getWatchlist() { try { return JSON.parse(localStorage.getItem("watchlist") || "[]"); } catch { return []; } }
 function saveWatchlist(list) { localStorage.setItem("watchlist", JSON.stringify(list)); updateWatchBadge(); }
@@ -24,13 +57,9 @@ function toggleWatch() {
   if (isWatched(q)) {
     list = list.filter(x => !(x.query === q && x.category === state.category));
   } else {
-    list.unshift({
-      query: q,
-      category: state.category,
-      addedAt: new Date().toISOString(),
-      price: state.marketData?.stats?.avg_price || null,
-      prevPrice: null,
-    });
+    const price = state.marketData?.stats?.avg_price || null;
+    list.unshift({ query: q, category: state.category, addedAt: new Date().toISOString(), price, prevPrice: null });
+    if (price) addPriceHistory(q, state.category, price);
   }
   saveWatchlist(list);
   renderMarket();
@@ -42,18 +71,17 @@ function removeWatch(q, cat) {
 }
 
 async function updateWatchPrice(q, cat) {
-  const btn = document.getElementById(`upd-btn-${btoa(q+cat).replace(/[^a-z0-9]/gi,'').slice(0,8)}`);
+  const btnId = `upd-${btoa(q+cat).replace(/[^a-z0-9]/gi,"").slice(0,8)}`;
+  const btn = document.getElementById(btnId);
   if (btn) { btn.textContent = "⏳"; btn.disabled = true; }
   try {
     const data = await api(`/api/market?q=${encodeURIComponent(q)}&category=${encodeURIComponent(cat)}`);
     const newPrice = data?.stats?.avg_price || null;
+    if (newPrice) addPriceHistory(q, cat, newPrice);
     let list = getWatchlist();
-    list = list.map(x => {
-      if (x.query === q && x.category === cat) {
-        return { ...x, prevPrice: x.price, price: newPrice, updatedAt: new Date().toISOString() };
-      }
-      return x;
-    });
+    list = list.map(x => (x.query === q && x.category === cat)
+      ? { ...x, prevPrice: x.price, price: newPrice, updatedAt: new Date().toISOString() }
+      : x);
     saveWatchlist(list);
     renderWatchlist();
   } catch(e) {
@@ -71,8 +99,9 @@ async function checkPriceChanges() {
       const newPrice = data?.stats?.avg_price;
       if (newPrice && item.price && Math.abs(newPrice - item.price) / item.price > 0.05) {
         changes.push({ query: item.query, oldPrice: item.price, newPrice });
+        addPriceHistory(item.query, item.category, newPrice);
         let wl = getWatchlist();
-        wl = wl.map(x => x.query === item.query && x.category === item.category
+        wl = wl.map(x => (x.query === item.query && x.category === item.category)
           ? { ...x, prevPrice: x.price, price: newPrice, updatedAt: new Date().toISOString() }
           : x);
         saveWatchlist(wl);
@@ -97,9 +126,10 @@ function showPriceAlert(changes) {
     const up = diff > 0;
     return `<div style="margin-bottom:6px;font-size:.84rem">
       <div style="color:var(--text)">${esc(c.query)}</div>
-      <div style="${up ? "color:#fc8181" : "color:#48bb78"}">${up ? "▲" : "▼"} ${pct}% · ${c.oldPrice.toLocaleString("ru-RU")} → ${c.newPrice.toLocaleString("ru-RU")} ₽</div>
+      <div style="${up?"color:#fc8181":"color:#48bb78"}">${up?"▲":"▼"} ${pct}% · ${c.oldPrice.toLocaleString("ru-RU")} → ${c.newPrice.toLocaleString("ru-RU")} ₽</div>
     </div>`;
-  }).join("") + `<button class="btn btn-secondary" style="width:100%;margin-top:8px;font-size:.78rem" onclick="document.getElementById('price-alert').remove()">Понятно</button>`;
+  }).join("") +
+  `<button class="btn btn-secondary" style="width:100%;margin-top:8px;font-size:.78rem" onclick="document.getElementById('price-alert').remove()">Понятно</button>`;
   document.body.appendChild(div);
   setTimeout(() => { if (div.parentNode) div.remove(); }, 15000);
 }
@@ -119,41 +149,39 @@ function renderWatchlist() {
   let list = getWatchlist();
   if (!list.length) { p.innerHTML = empty("⭐", "Список отслеживания пуст. Найдите инструмент и нажмите ☆ Отслеживать"); return; }
 
-  // Filter
   const cats = [...new Set(list.map(x => x.category))];
   if (watchState.cat !== "all") list = list.filter(x => x.category === watchState.cat);
-
-  // Sort
-  if (watchState.sort === "price_asc") list = [...list].sort((a, b) => (a.price || 0) - (b.price || 0));
-  else if (watchState.sort === "price_desc") list = [...list].sort((a, b) => (b.price || 0) - (a.price || 0));
-  else if (watchState.sort === "name") list = [...list].sort((a, b) => a.query.localeCompare(b.query));
-  else list = [...list].sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt));
+  if (watchState.sort === "price_asc") list = [...list].sort((a,b) => (a.price||0)-(b.price||0));
+  else if (watchState.sort === "price_desc") list = [...list].sort((a,b) => (b.price||0)-(a.price||0));
+  else if (watchState.sort === "name") list = [...list].sort((a,b) => a.query.localeCompare(b.query));
+  else list = [...list].sort((a,b) => new Date(b.addedAt)-new Date(a.addedAt));
 
   let html = `<div style="margin-bottom:16px">
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
       <span style="font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.06em">Сортировка:</span>
-      <button class="btn ${watchState.sort==='date'?'btn-primary':'btn-secondary'}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchSort('date')">📅 По дате</button>
-      <button class="btn ${watchState.sort==='price_asc'?'btn-primary':'btn-secondary'}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchSort('price_asc')">↑ Цена</button>
-      <button class="btn ${watchState.sort==='price_desc'?'btn-primary':'btn-secondary'}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchSort('price_desc')">↓ Цена</button>
-      <button class="btn ${watchState.sort==='name'?'btn-primary':'btn-secondary'}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchSort('name')">🔤 По имени</button>
+      <button class="btn ${watchState.sort==="date"?"btn-primary":"btn-secondary"}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchSort('date')">📅 По дате</button>
+      <button class="btn ${watchState.sort==="price_asc"?"btn-primary":"btn-secondary"}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchSort('price_asc')">↑ Цена</button>
+      <button class="btn ${watchState.sort==="price_desc"?"btn-primary":"btn-secondary"}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchSort('price_desc')">↓ Цена</button>
+      <button class="btn ${watchState.sort==="name"?"btn-primary":"btn-secondary"}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchSort('name')">🔤 По имени</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <span style="font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.06em">Категория:</span>
-      <button class="btn ${watchState.cat==='all'?'btn-primary':'btn-secondary'}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchCat('all')">Все</button>
-      ${cats.map(c => `<button class="btn ${watchState.cat===c?'btn-primary':'btn-secondary'}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchCat('${c}')">${CAT_ICONS[c]||""} ${esc(c)}</button>`).join("")}
+      <button class="btn ${watchState.cat==="all"?"btn-primary":"btn-secondary"}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchCat('all')">Все</button>
+      ${cats.map(c=>`<button class="btn ${watchState.cat===c?"btn-primary":"btn-secondary"}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchCat('${c}')">${CAT_ICONS[c]||""} ${esc(c)}</button>`).join("")}
     </div>
-  </div>`;
-
-  html += `<div style="margin-bottom:12px;font-size:.85rem;color:var(--dim)">⭐ ${list.length} позиций</div>`;
-  html += `<div class="listings-grid">`;
+  </div>
+  <div style="margin-bottom:12px;font-size:.85rem;color:var(--dim)">⭐ ${list.length} позиций</div>
+  <div class="listings-grid">`;
 
   list.forEach(item => {
     const date = item.addedAt ? new Date(item.addedAt).toLocaleDateString("ru-RU") : "—";
     const updDate = item.updatedAt ? new Date(item.updatedAt).toLocaleDateString("ru-RU") : null;
     const hasPriceChange = item.prevPrice && item.price && item.prevPrice !== item.price;
     const priceUp = hasPriceChange && item.price > item.prevPrice;
-    const pricePct = hasPriceChange ? Math.round(Math.abs(item.price - item.prevPrice) / item.prevPrice * 100) : 0;
-    const btnId = `upd-btn-${btoa(item.query + item.category).replace(/[^a-z0-9]/gi,'').slice(0,8)}`;
+    const pricePct = hasPriceChange ? Math.round(Math.abs(item.price-item.prevPrice)/item.prevPrice*100) : 0;
+    const btnId = `upd-${btoa(item.query+item.category).replace(/[^a-z0-9]/gi,"").slice(0,8)}`;
+    const history = getItemHistory(item.query, item.category);
+    const sparkline = renderSparkline(history);
 
     html += `<div class="listing-card" style="cursor:default;display:flex;flex-direction:column">
       <div class="listing-body" style="flex:1">
@@ -165,16 +193,24 @@ function renderWatchlist() {
           onclick="selectCatAndSearch('${esc(item.category)}','${item.query.replace(/'/g,"\\'")}')">
           ${esc(item.query)}
         </div>
-        <div style="margin-bottom:6px">
-          <div style="font-size:.72rem;color:var(--dim);margin-bottom:2px">Сохранённая цена:</div>
-          <div class="listing-price" style="margin:0">${item.price ? item.price.toLocaleString("ru-RU") + " ₽" : "Неизвестно"}</div>
+        <div style="margin-bottom:4px">
+          <div style="font-size:.72rem;color:var(--dim);margin-bottom:2px">Текущая цена:</div>
+          <div class="listing-price" style="margin:0">${item.price ? item.price.toLocaleString("ru-RU")+" ₽" : "Неизвестно"}</div>
         </div>
-        ${hasPriceChange ? `<div style="font-size:.78rem;${priceUp?"color:#fc8181":"color:#48bb78"};margin-bottom:6px">
+        ${hasPriceChange ? `<div style="font-size:.78rem;${priceUp?"color:#fc8181":"color:#48bb78"};margin-bottom:4px">
           ${priceUp?"▲":"▼"} ${pricePct}% от ${item.prevPrice.toLocaleString("ru-RU")} ₽
         </div>` : ""}
-        ${updDate ? `<div style="font-size:.7rem;color:var(--dim);margin-bottom:8px">Обновлено: ${updDate}</div>` : ""}
+        ${sparkline ? `<div style="margin-bottom:4px">
+          <div style="font-size:.68rem;color:var(--dim);margin-bottom:2px">📈 История цен (${history.length} точек)</div>
+          ${sparkline}
+          <div style="display:flex;justify-content:space-between;font-size:.68rem;color:var(--dim);margin-top:2px">
+            <span>${new Date(history[0].date).toLocaleDateString("ru-RU")}</span>
+            <span>${new Date(history[history.length-1].date).toLocaleDateString("ru-RU")}</span>
+          </div>
+        </div>` : ""}
+        ${updDate ? `<div style="font-size:.7rem;color:var(--dim)">Обновлено: ${updDate}</div>` : ""}
       </div>
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
         <button class="btn btn-primary" style="font-size:.73rem;padding:5px 10px;flex:1"
           onclick="selectCatAndSearch('${esc(item.category)}','${item.query.replace(/'/g,"\\'")}')">🔍 Найти</button>
         <button id="${btnId}" class="btn btn-secondary" style="font-size:.73rem;padding:5px 10px;flex:1"
@@ -192,48 +228,41 @@ function renderWatchlist() {
 window.setWatchSort = function(s) { watchState.sort = s; renderWatchlist(); };
 window.setWatchCat = function(c) { watchState.cat = c; renderWatchlist(); };
 
-/* ── Market Analysis Helpers ── */
+/* ── Market Analysis ── */
 function calcRarity(stats) {
   const count = stats.offer_count || 0;
   let volatility = 0;
-  if (stats.avg_price && stats.min_price != null && stats.max_price != null && stats.avg_price > 0) {
+  if (stats.avg_price && stats.min_price != null && stats.max_price != null && stats.avg_price > 0)
     volatility = Math.round(((stats.max_price - stats.min_price) / stats.avg_price) * 100);
-  }
   let label, icon, cls, desc;
-  if (count === 0) { label = "Редкий товар"; icon = "💎"; cls = "rarity-rare"; desc = "Нет предложений на рынке"; }
-  else if (count >= 20) { label = "Обычный товар"; icon = "📦"; cls = "rarity-common"; desc = "Много предложений · Стабильный рынок"; }
-  else if (count >= 5) { label = "Ограниченное предложение"; icon = "⚡"; cls = "rarity-limited"; desc = (volatility > 45 ? "Мало предложений · Высокий разброс цен" : "Мало предложений · Умеренный разброс"); }
-  else { label = "Редкий товар"; icon = "💎"; cls = "rarity-rare"; desc = "Очень мало предложений · Трудно найти"; }
-  if (count > 0 && count < 8 && stats.avg_price && stats.avg_price > 5000) { label = "Высокая ценность"; icon = "🏆"; cls = "rarity-valuable"; desc = "Высокая цена + ограниченная доступность"; }
+  if (count === 0) { label="Редкий товар"; icon="💎"; cls="rarity-rare"; desc="Нет предложений на рынке"; }
+  else if (count >= 20) { label="Обычный товар"; icon="📦"; cls="rarity-common"; desc="Много предложений · Стабильный рынок"; }
+  else if (count >= 5) { label="Ограниченное предложение"; icon="⚡"; cls="rarity-limited"; desc=volatility>45?"Мало предложений · Высокий разброс цен":"Мало предложений · Умеренный разброс"; }
+  else { label="Редкий товар"; icon="💎"; cls="rarity-rare"; desc="Очень мало предложений · Трудно найти"; }
+  if (count>0 && count<8 && stats.avg_price && stats.avg_price>5000) { label="Высокая ценность"; icon="🏆"; cls="rarity-valuable"; desc="Высокая цена + ограниченная доступность"; }
   return { label, icon, cls, desc, volatility, count };
 }
 
 function calcDealScore(stats) {
-  if (!stats.avg_price || stats.min_price == null || stats.max_price == null) return null;
+  if (!stats.avg_price || stats.min_price==null || stats.max_price==null) return null;
   const spread = stats.max_price - stats.min_price;
   if (spread < 10) return "medium";
   const pos = (stats.avg_price - stats.min_price) / spread;
-  if (pos <= 0.35) return "cheap";
-  if (pos <= 0.65) return "medium";
-  return "expensive";
+  return pos<=0.35 ? "cheap" : pos<=0.65 ? "medium" : "expensive";
 }
 
 function renderMarketAnalysis(stats) {
   const rarity = calcRarity(stats);
   const deal = calcDealScore(stats);
-  const volColor = rarity.volatility > 60 ? "#fc8181" : rarity.volatility > 30 ? "#ed8936" : "#48bb78";
+  const volColor = rarity.volatility>60?"#fc8181":rarity.volatility>30?"#ed8936":"#48bb78";
   const volWidth = Math.min(rarity.volatility, 100);
-  const dealHtml = deal ? `
-    <div class="metric-block">
-      <div class="metric-label">Оценка цены</div>
-      <div class="deal-score">
-        <div class="deal-segment ${deal==="cheap"?"active-cheap":""}">💚 Дёшево</div>
-        <div class="deal-segment ${deal==="medium"?"active-medium":""}">🟡 Средне</div>
-        <div class="deal-segment ${deal==="expensive"?"active-expensive":""}">🔴 Дорого</div>
-      </div>
-    </div>` : "";
-  return `
-  <div class="market-analysis">
+  const dealHtml = deal ? `<div class="metric-block"><div class="metric-label">Оценка цены</div>
+    <div class="deal-score">
+      <div class="deal-segment ${deal==="cheap"?"active-cheap":""}">💚 Дёшево</div>
+      <div class="deal-segment ${deal==="medium"?"active-medium":""}">🟡 Средне</div>
+      <div class="deal-segment ${deal==="expensive"?"active-expensive":""}">🔴 Дорого</div>
+    </div></div>` : "";
+  return `<div class="market-analysis">
     <div class="analysis-header">
       <div class="analysis-title">Анализ рынка</div>
       <div class="rarity-badge ${rarity.cls}">${rarity.icon} ${esc(rarity.label)}</div>
@@ -243,7 +272,7 @@ function renderMarketAnalysis(stats) {
       <div class="metric-block">
         <div class="metric-label">Волатильность цен</div>
         <div class="vol-track"><div class="vol-fill" style="width:${volWidth}%;background:${volColor}"></div></div>
-        <div class="vol-pct">Разброс: ${rarity.volatility}% · ${rarity.volatility < 20 ? "Стабильные цены" : rarity.volatility < 50 ? "Умеренный разброс" : "Высокий разброс цен"}</div>
+        <div class="vol-pct">Разброс: ${rarity.volatility}% · ${rarity.volatility<20?"Стабильные цены":rarity.volatility<50?"Умеренный разброс":"Высокий разброс цен"}</div>
       </div>
       ${dealHtml}
     </div>
@@ -254,290 +283,223 @@ function renderMarketAnalysis(stats) {
 function cmpAdd() {
   if (!state.query || !state.marketData) return;
   if (cmpItems.length >= 3) { alert("Максимум 3 позиции для сравнения"); return; }
-  if (cmpItems.find(x => x.query === state.query && x.category === state.category)) { alert("Эта позиция уже добавлена"); return; }
-  cmpItems.push({ query: state.query, category: state.category, market: state.marketData, compat: state.compatData });
-  updateCmpBadge();
-  renderTab();
+  if (cmpItems.find(x => x.query===state.query && x.category===state.category)) { alert("Эта позиция уже добавлена"); return; }
+  cmpItems.push({ query:state.query, category:state.category, market:state.marketData, compat:state.compatData });
+  updateCmpBadge(); renderTab();
 }
-
-function cmpRemove(idx) { cmpItems.splice(idx, 1); updateCmpBadge(); renderCmpContent(); }
-
+function cmpRemove(idx) { cmpItems.splice(idx,1); updateCmpBadge(); renderCmpContent(); }
 function updateCmpBadge() {
-  const btn = $("#cmp-open-btn"), cnt = $("#cmp-count");
-  if (!btn || !cnt) return;
-  cnt.textContent = cmpItems.length;
-  btn.style.display = cmpItems.length ? "" : "none";
+  const btn=$("#cmp-open-btn"), cnt=$("#cmp-count"); if (!btn||!cnt) return;
+  cnt.textContent=cmpItems.length; btn.style.display=cmpItems.length?"":"none";
 }
-
-window.openCompare = function () { if (!cmpItems.length) return; $("#cmp-modal").style.display = "flex"; renderCmpContent(); };
-window.closeCompare = function () { $("#cmp-modal").style.display = "none"; };
+window.openCompare = function() { if (!cmpItems.length) return; $("#cmp-modal").style.display="flex"; renderCmpContent(); };
+window.closeCompare = function() { $("#cmp-modal").style.display="none"; };
 
 function renderCmpContent() {
-  const box = $("#cmp-content"); if (!box) return;
-  if (!cmpItems.length) { box.innerHTML = `<div class="empty" style="padding:40px">Нет позиций для сравнения</div>`; return; }
-  const cols = cmpItems.length;
-  const prices = cmpItems.map(it => it.market?.stats?.avg_price || null);
-  const validP = prices.filter(Boolean);
-  const minP = validP.length ? Math.min(...validP) : null;
-  const rows = [
-    { key: "head", render: (it, i) => `<div class="cmp-cell head"><div><div style="font-size:.8rem;color:var(--dim)">${CAT_ICONS[it.category]||""} ${esc(it.category)}</div><div>${esc(it.query)}</div></div><button class="cmp-add-btn" onclick="cmpRemove(${i})">✕</button></div>` },
-    { label: "Средняя цена", render: (it) => { const p = it.market?.stats?.avg_price; const best = p && p === minP; return `<div class="cmp-cell${best?" cmp-best":""}"><div class="cmp-price">${p ? p.toLocaleString("ru-RU")+" ₽":"—"}</div>${best?`<div style="font-size:.72rem;color:var(--success)">✅ Лучшая цена</div>`:""}</div>`; } },
-    { label: "Диапазон цен", render: (it) => { const s = it.market?.stats||{}; return `<div class="cmp-cell">${s.min_price!=null?`от ${s.min_price.toLocaleString("ru-RU")} до ${s.max_price.toLocaleString("ru-RU")} ₽`:"—"}</div>`; } },
-    { label: "Новый / Б.У.", render: (it) => { const s = it.market?.stats||{}; return `<div class="cmp-cell">${s.new_count>0?`<div style="color:var(--success)">✅ Новый: ${s.new_avg?s.new_avg.toLocaleString("ru-RU")+" ₽":"есть"} (${s.new_count} шт)</div>`:""}${s.used_count>0?`<div style="color:var(--warning)">🔄 Б/У: ${s.used_avg?s.used_avg.toLocaleString("ru-RU")+" ₽":"есть"} (${s.used_count} шт)</div>`:""}${!s.new_count&&!s.used_count?"—":""}</div>`; } },
-    { label: "Предложений", render: (it) => `<div class="cmp-cell">${it.market?.stats?.offer_count||0} шт</div>` },
-    { label: "Популярность", render: (it) => `<div class="cmp-cell">${it.market?.stats?.popularity||"—"}</div>` },
-    { label: "Форма / Тип", render: (it) => `<div class="cmp-cell">${esc(it.compat?.parsed?.shape||"—")}</div>` },
-    { label: "Применение", render: (it) => { const apps = it.compat?.applications||[]; return `<div class="cmp-cell">${apps.length?apps.map(a=>`<span class="app-tag" style="margin:2px;font-size:.73rem">${esc(a)}</span>`).join(""):"—"}</div>`; } },
-    { label: "Совм. бренды", render: (it) => { const brands = (it.compat?.compatible_holders_by_brand||[]).map(b=>b.brand); return `<div class="cmp-cell">${brands.length?esc(brands.slice(0,4).join(", ")):"—"}</div>`; } },
+  const box=$("#cmp-content"); if (!box) return;
+  if (!cmpItems.length) { box.innerHTML=`<div class="empty" style="padding:40px">Нет позиций для сравнения</div>`; return; }
+  const prices=cmpItems.map(it=>it.market?.stats?.avg_price||null);
+  const minP=Math.min(...prices.filter(Boolean));
+  const rows=[
+    {key:"head",render:(it,i)=>`<div class="cmp-cell head"><div><div style="font-size:.8rem;color:var(--dim)">${CAT_ICONS[it.category]||""} ${esc(it.category)}</div><div>${esc(it.query)}</div></div><button class="cmp-add-btn" onclick="cmpRemove(${i})">✕</button></div>`},
+    {label:"Средняя цена",render:(it)=>{const p=it.market?.stats?.avg_price,best=p&&p===minP;return `<div class="cmp-cell${best?" cmp-best":""}"><div class="cmp-price">${p?p.toLocaleString("ru-RU")+" ₽":"—"}</div>${best?`<div style="font-size:.72rem;color:var(--success)">✅ Лучшая цена</div>`:""}</div>`;}},
+    {label:"Диапазон цен",render:(it)=>{const s=it.market?.stats||{};return `<div class="cmp-cell">${s.min_price!=null?`от ${s.min_price.toLocaleString("ru-RU")} до ${s.max_price.toLocaleString("ru-RU")} ₽`:"—"}</div>`;}},
+    {label:"Новый / Б.У.",render:(it)=>{const s=it.market?.stats||{};return `<div class="cmp-cell">${s.new_count>0?`<div style="color:var(--success)">✅ Новый: ${s.new_avg?s.new_avg.toLocaleString("ru-RU")+" ₽":"есть"} (${s.new_count} шт)</div>`:""}${s.used_count>0?`<div style="color:var(--warning)">🔄 Б/У: ${s.used_avg?s.used_avg.toLocaleString("ru-RU")+" ₽":"есть"} (${s.used_count} шт)</div>`:""}${!s.new_count&&!s.used_count?"—":""}</div>`;}},
+    {label:"Предложений",render:(it)=>`<div class="cmp-cell">${it.market?.stats?.offer_count||0} шт</div>`},
+    {label:"Популярность",render:(it)=>`<div class="cmp-cell">${it.market?.stats?.popularity||"—"}</div>`},
+    {label:"Форма / Тип",render:(it)=>`<div class="cmp-cell">${esc(it.compat?.parsed?.shape||"—")}</div>`},
+    {label:"Применение",render:(it)=>{const apps=it.compat?.applications||[];return `<div class="cmp-cell">${apps.length?apps.map(a=>`<span class="app-tag" style="margin:2px;font-size:.73rem">${esc(a)}</span>`).join(""):"—"}</div>`;}},
+    {label:"Совм. бренды",render:(it)=>{const brands=(it.compat?.compatible_holders_by_brand||[]).map(b=>b.brand);return `<div class="cmp-cell">${brands.length?esc(brands.slice(0,4).join(", ")):"—"}</div>`;}},
   ];
-  let html = `<div class="cmp-grid" style="grid-template-columns:repeat(${cols},1fr)">`;
-  rows.forEach(row => {
-    if (row.label) html += `<div class="cmp-cell label" style="grid-column:1/-1">${esc(row.label)}</div>`;
-    cmpItems.forEach((it, i) => { html += row.render(it, i); });
+  let html=`<div class="cmp-grid" style="grid-template-columns:repeat(${cmpItems.length},1fr)">`;
+  rows.forEach(row=>{
+    if (row.label) html+=`<div class="cmp-cell label" style="grid-column:1/-1">${esc(row.label)}</div>`;
+    cmpItems.forEach((it,i)=>{ html+=row.render(it,i); });
   });
-  if (cmpItems.length < 3) html += `<div class="cmp-cell" style="grid-column:1/-1;text-align:center;padding:16px"><button class="btn btn-secondary" onclick="closeCompare()">+ Добавить ещё позицию</button></div>`;
-  html += `</div>`;
-  box.innerHTML = html;
+  if (cmpItems.length<3) html+=`<div class="cmp-cell" style="grid-column:1/-1;text-align:center;padding:16px"><button class="btn btn-secondary" onclick="closeCompare()">+ Добавить ещё позицию</button></div>`;
+  html+=`</div>`; box.innerHTML=html;
 }
 
 /* ── История поиска ── */
 function getHistory() { try { return JSON.parse(localStorage.getItem("search_history")||"[]"); } catch { return []; } }
 function addHistory(q) {
   if (!q) return;
-  let h = getHistory().filter(x => x !== q);
-  h.unshift(q); h = h.slice(0, 20);
-  localStorage.setItem("search_history", JSON.stringify(h));
-  renderHistory();
+  let h=getHistory().filter(x=>x!==q); h.unshift(q); h=h.slice(0,20);
+  localStorage.setItem("search_history",JSON.stringify(h)); renderHistory();
 }
 function clearHistory() { localStorage.removeItem("search_history"); renderHistory(); }
 function renderHistory() {
-  const el = $("#history-list"); if (!el) return;
-  const h = getHistory();
-  if (!h.length) { el.innerHTML = `<span style="color:var(--dim);font-size:.8rem">История пуста</span>`; return; }
-  el.innerHTML = h.map(q => `<span class="chip" onclick="setQuery('${q.replace(/'/g,"\\'")}')">${esc(q)}</span>`).join("") +
+  const el=$("#history-list"); if (!el) return;
+  const h=getHistory();
+  if (!h.length) { el.innerHTML=`<span style="color:var(--dim);font-size:.8rem">История пуста</span>`; return; }
+  el.innerHTML=h.map(q=>`<span class="chip" onclick="setQuery('${q.replace(/'/g,"\\'")}')">${esc(q)}</span>`).join("")+
     `<span style="cursor:pointer;font-size:.75rem;color:var(--dim);padding:4px 8px;border-radius:20px;border:1px solid var(--border)" onclick="clearHistory()">✕ Очистить</span>`;
 }
 
-const CAT_ICONS = { inserts: "🔶", drills: "🔩", mills: "⚙️", burrs: "🌀", reamers: "🔧" };
-const COND_LABEL = { new: "Новый", used: "Б/У", unknown: "—" };
-const COND_CLS = { new: "cond-new", used: "cond-used", unknown: "cond-unknown" };
+const CAT_ICONS={inserts:"🔶",drills:"🔩",mills:"⚙️",burrs:"🌀",reamers:"🔧"};
+const COND_LABEL={new:"Новый",used:"Б/У",unknown:"—"};
+const COND_CLS={new:"cond-new",used:"cond-used",unknown:"cond-unknown"};
+const $=s=>document.querySelector(s);
+const $$=s=>[...document.querySelectorAll(s)];
+function esc(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function loader(){return `<div class="loader"><div class="spinner"></div>Загрузка данных...</div>`;}
+function empty(icon,msg){return `<div class="empty"><div class="icon">${icon}</div>${esc(msg)}</div>`;}
+function fmt(n){return n!=null?Number(n).toLocaleString("ru-RU")+" ₽":"—";}
 
-const $ = s => document.querySelector(s);
-const $$ = s => [...document.querySelectorAll(s)];
-function esc(s) { return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function loader() { return `<div class="loader"><div class="spinner"></div>Загрузка данных...</div>`; }
-function empty(icon, msg) { return `<div class="empty"><div class="icon">${icon}</div>${esc(msg)}</div>`; }
-function fmt(n) { return n != null ? Number(n).toLocaleString("ru-RU")+" ₽" : "—"; }
-
-async function api(path) {
-  const r = await fetch(path);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+async function api(path){
+  const r=await fetch(path); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json();
 }
 
 async function init() {
-  setupCategoryBar();
-  setupTabs();
-  setupSearch();
-  renderQuickChips();
-  renderMarketEmpty();
-  updateWatchBadge();
+  setupCategoryBar(); setupTabs(); setupSearch(); renderQuickChips(); renderMarketEmpty(); updateWatchBadge();
   setTimeout(checkPriceChanges, 3000);
-
   try {
-    [state.insertTypes, state.holders, state.categories] = await Promise.all([
-      api("/api/insert-types"),
-      api("/api/holders"),
-      api("/api/categories"),
+    [state.insertTypes,state.holders,state.categories]=await Promise.all([
+      api("/api/insert-types"), api("/api/holders"), api("/api/categories"),
     ]);
-    renderQuickChips();
-    renderShapes();
-    renderHoldersTab();
-  } catch(e) { console.warn(e); }
+    renderQuickChips(); renderShapes(); renderHoldersTab();
+  } catch(e){console.warn(e);}
 }
 
 function setupCategoryBar() {
-  $$(".cat-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      $$(".cat-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.category = btn.dataset.cat;
-      renderQuickChips();
+  $$(".cat-btn").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      $$(".cat-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active"); state.category=btn.dataset.cat; renderQuickChips();
       if (state.query) doSearch();
     });
   });
 }
-
 function setupTabs() {
-  $$(".tab").forEach(t => {
-    t.addEventListener("click", () => {
-      $$(".tab").forEach(x => x.classList.remove("active"));
-      t.classList.add("active");
-      state.tab = t.dataset.tab;
-      renderTab();
+  $$(".tab").forEach(t=>{
+    t.addEventListener("click",()=>{
+      $$(".tab").forEach(x=>x.classList.remove("active")); t.classList.add("active"); state.tab=t.dataset.tab; renderTab();
     });
   });
 }
-
 function setupSearch() {
-  $("#search-btn").addEventListener("click", doSearch);
-  $("#search-input").addEventListener("keydown", e => e.key === "Enter" && doSearch());
+  $("#search-btn").addEventListener("click",doSearch);
+  $("#search-input").addEventListener("keydown",e=>e.key==="Enter"&&doSearch());
 }
-
-function setQuery(q) { $("#search-input").value = q; doSearch(); }
+function setQuery(q){$("#search-input").value=q; doSearch();}
 
 async function doSearch() {
-  const q = $("#search-input").value.trim();
-  if (!q) return;
-  state.query = q;
-  state.loading = true;
-  renderTab();
-
-  const [market, compat] = await Promise.allSettled([
+  const q=$("#search-input").value.trim(); if (!q) return;
+  state.query=q; state.loading=true; renderTab();
+  const [market,compat]=await Promise.allSettled([
     api(`/api/market?q=${encodeURIComponent(q)}&category=${state.category}`),
     api(`/api/compatibility/${encodeURIComponent(q)}`),
   ]);
-
-  state.marketData = market.status === "fulfilled" ? market.value : { error: market.reason?.message, listings: [], stats: {} };
-  state.compatData = compat.status === "fulfilled" ? compat.value : null;
-  state.loading = false;
-  addHistory(q);
-  renderTab();
+  state.marketData=market.status==="fulfilled"?market.value:{error:market.reason?.message,listings:[],stats:{}};
+  state.compatData=compat.status==="fulfilled"?compat.value:null;
+  state.loading=false; addHistory(q); renderTab();
 }
 
 function renderQuickChips() {
-  const cats = state.categories || {};
-  const cat = cats[state.category] || {};
-  let list = cat.popular || state.insertTypes?.popular_inserts || [];
-  const chips = $("#quick-chips");
-  chips.innerHTML = "";
-  list.slice(0, 18).forEach(code => {
-    const c = document.createElement("span");
-    c.className = "chip";
-    c.textContent = code;
-    c.addEventListener("click", () => {
-      $$(".chip").forEach(x => x.classList.remove("active"));
-      c.classList.add("active");
-      setQuery(code);
-    });
+  const cats=state.categories||{}, cat=cats[state.category]||{};
+  let list=cat.popular||state.insertTypes?.popular_inserts||[];
+  const chips=$("#quick-chips"); chips.innerHTML="";
+  list.slice(0,18).forEach(code=>{
+    const c=document.createElement("span"); c.className="chip"; c.textContent=code;
+    c.addEventListener("click",()=>{$$(".chip").forEach(x=>x.classList.remove("active")); c.classList.add("active"); setQuery(code);});
     chips.appendChild(c);
   });
 }
 
 function renderTab() {
-  $$(".tab-panel").forEach(p => p.style.display = "none");
-  const panel = $(`#tab-${state.tab}`);
-  if (panel) panel.style.display = "";
-  if (state.tab === "market") renderMarket();
-  else if (state.tab === "compat") renderCompat();
-  else if (state.tab === "shapes") renderShapes();
-  else if (state.tab === "holders") renderHoldersTab();
-  else if (state.tab === "watch") renderWatchlist();
+  $$(".tab-panel").forEach(p=>p.style.display="none");
+  const panel=$(`#tab-${state.tab}`); if (panel) panel.style.display="";
+  if (state.tab==="market") renderMarket();
+  else if (state.tab==="compat") renderCompat();
+  else if (state.tab==="shapes") renderShapes();
+  else if (state.tab==="holders") renderHoldersTab();
+  else if (state.tab==="watch") renderWatchlist();
 }
-
-function renderMarketEmpty() {
-  $("#tab-market").innerHTML = empty("🔍", "Выберите категорию и введите название инструмента");
-}
+function renderMarketEmpty(){$("#tab-market").innerHTML=empty("🔍","Выберите категорию и введите название инструмента");}
 
 /* ══ MARKET ══ */
 function renderMarket() {
-  const p = $("#tab-market");
-  if (state.loading) { p.innerHTML = loader(); return; }
-  if (!state.marketData) { p.innerHTML = empty("🔍", "Введите запрос"); return; }
+  const p=$("#tab-market");
+  if (state.loading){p.innerHTML=loader();return;}
+  if (!state.marketData){p.innerHTML=empty("🔍","Введите запрос");return;}
+  const d=state.marketData, s=d.stats||{};
+  let html="";
 
-  const d = state.marketData;
-  const s = d.stats || {};
-  let html = "";
-
-  const alreadyInCmp = cmpItems.find(x => x.query === state.query && x.category === state.category);
-  const watched = isWatched(state.query);
-  html += `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+  const alreadyInCmp=cmpItems.find(x=>x.query===state.query&&x.category===state.category);
+  const watched=isWatched(state.query);
+  html+=`<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn ${alreadyInCmp?"btn-secondary":"btn-primary"}" onclick="cmpAdd()" ${alreadyInCmp?"disabled":""}>
       ${alreadyInCmp?"✅ Добавлено в сравнение":"⚖️ Добавить в сравнение"}
     </button>
     <button class="btn btn-secondary" onclick="toggleWatch()" style="${watched?"border-color:var(--accent);color:var(--accent)":""}">
       ${watched?"⭐ Отслеживается":"☆ Отслеживать"}
     </button>
-    ${cmpItems.length > 1 ? `<button class="btn btn-secondary" onclick="openCompare()">Открыть сравнение (${cmpItems.length})</button>` : ""}
+    ${cmpItems.length>1?`<button class="btn btn-secondary" onclick="openCompare()">Открыть сравнение (${cmpItems.length})</button>`:""}
   </div>`;
 
-  const q = encodeURIComponent(state.query);
-  const markets = [
-    { label: "Авито", color: "#00aaff", text: "#fff", url: `https://www.avito.ru/rossiya?q=${q}` },
-    { label: "Яндекс Маркет", color: "#ffcc00", text: "#000", url: `https://market.yandex.ru/search?text=${q}` },
-    { label: "Ozon", color: "#005bff", text: "#fff", url: `https://www.ozon.ru/search/?text=${q}&from_global=true` },
-    { label: "Wildberries", color: "#cb11ab", text: "#fff", url: `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}` },
-    { label: "ВсеИнструменты", color: "#e8380d", text: "#fff", url: `https://www.vseinstrumenti.ru/search/?q=${q}` },
-    { label: "220 Вольт", color: "#ff8800", text: "#fff", url: `https://www.220-volt.ru/search/?query=${q}` },
-    { label: "Sandvik", color: "#1a3a5c", text: "#ffd700", url: `https://www.sandvik.coromant.com/ru-ru/search#q=${q}` },
-    { label: "Iscar", color: "#0057a8", text: "#fff", url: `https://www.iscar.com/eCatalog/item.aspx/lang/RU/Fnum/1?q=${q}` },
+  const q=encodeURIComponent(state.query);
+  const markets=[
+    {label:"Авито",color:"#00aaff",text:"#fff",url:`https://www.avito.ru/rossiya?q=${q}`},
+    {label:"Яндекс Маркет",color:"#ffcc00",text:"#000",url:`https://market.yandex.ru/search?text=${q}`},
+    {label:"Ozon",color:"#005bff",text:"#fff",url:`https://www.ozon.ru/search/?text=${q}&from_global=true`},
+    {label:"Wildberries",color:"#cb11ab",text:"#fff",url:`https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`},
+    {label:"ВсеИнструменты",color:"#e8380d",text:"#fff",url:`https://www.vseinstrumenti.ru/search/?q=${q}`},
+    {label:"220 Вольт",color:"#ff8800",text:"#fff",url:`https://www.220-volt.ru/search/?query=${q}`},
+    {label:"Sandvik",color:"#1a3a5c",text:"#ffd700",url:`https://www.sandvik.coromant.com/ru-ru/search#q=${q}`},
+    {label:"Iscar",color:"#0057a8",text:"#fff",url:`https://www.iscar.com/eCatalog/item.aspx/lang/RU/Fnum/1?q=${q}`},
+    {label:"Абамет",color:"#2d6a4f",text:"#fff",url:`https://abamet.ru/search/?q=${q}`},
+    {label:"Метро C&C",color:"#cc0000",text:"#fff",url:`https://online.metro-cc.ru/search?in=&query=${q}`},
   ];
 
-  html += `<div class="marketplace-section">
+  html+=`<div class="marketplace-section">
     <div class="marketplace-label">Найти на площадках</div>
     <div class="marketplace-grid">
-      ${markets.map(m => `<a href="${esc(m.url)}" target="_blank" rel="noopener" class="market-btn" style="background:${m.color};color:${m.text}">${esc(m.label)}</a>`).join("")}
+      ${markets.map(m=>`<a href="${esc(m.url)}" target="_blank" rel="noopener" class="market-btn" style="background:${m.color};color:${m.text}">${esc(m.label)}</a>`).join("")}
     </div>
   </div>`;
 
-  if (d.error && !d.listings?.length) html += `<div class="alert alert-warn">⚠ ${esc(d.error)}</div>`;
-  if (d.is_estimate) html += `<div class="alert alert-info">📊 Прямой поиск недоступен — показана <strong>рыночная оценка</strong> на основе базы данных. Для актуальных цен используйте ссылки на площадки выше.</div>`;
+  if (d.error&&!d.listings?.length) html+=`<div class="alert alert-warn">⚠ ${esc(d.error)}</div>`;
+  if (d.is_estimate) html+=`<div class="alert alert-info">📊 Прямой поиск недоступен — показана <strong>рыночная оценка</strong> на основе базы данных. Для актуальных цен используйте ссылки на площадки выше.</div>`;
 
-  html += `<div class="section-header">
+  html+=`<div class="section-header">
     <span class="section-title">${CAT_ICONS[state.category]||""} "${esc(state.query)}"</span>
     <span class="source-badge">${esc(d.source||"—")} · ${d.timestamp||""}${d.from_cache?' · <span style="color:var(--warning)">кэш</span>':""}</span>
   </div>`;
 
-  html += `<div class="stats-row">
-    <div class="stat-card">
-      <div class="label">Средняя цена</div>
-      <div class="value green">${fmt(s.avg_price)}</div>
+  html+=`<div class="stats-row">
+    <div class="stat-card"><div class="label">Средняя цена</div><div class="value green">${fmt(s.avg_price)}</div>
       ${s.min_price!=null?`<div style="font-size:.72rem;color:var(--dim);margin-top:3px">Мин: ${fmt(s.min_price)} · Макс: ${fmt(s.max_price)}</div>`:""}
     </div>
-    <div class="stat-card">
-      <div class="label">Предложений</div>
-      <div class="value blue">${s.offer_count||0}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Популярность</div>
-      <div class="value orange">${s.popularity||"—"}</div>
+    <div class="stat-card"><div class="label">Предложений</div><div class="value blue">${s.offer_count||0}</div></div>
+    <div class="stat-card"><div class="label">Популярность</div><div class="value orange">${s.popularity||"—"}</div>
       <div class="pop-bar">${[1,2,3,4,5].map(i=>`<div class="pop-dot${i<=(s.popularity_level||0)?" filled":""}"></div>`).join("")}</div>
     </div>
   </div>`;
 
-  if (s.offer_count !== undefined) html += renderMarketAnalysis(s);
+  if (s.offer_count!==undefined) html+=renderMarketAnalysis(s);
 
-  if (s.new_count > 0 || s.used_count > 0) {
-    html += `<div class="price-split">
-      <div class="price-box new-box">
-        <div class="pb-label">✅ Новый (${s.new_count||0} шт)</div>
-        <div class="pb-val">${fmt(s.new_avg)}</div>
-        ${s.new_min!=null?`<div class="pb-range">от ${fmt(s.new_min)} до ${fmt(s.new_max)}</div>`:""}
-      </div>
-      <div class="price-box used-box">
-        <div class="pb-label">🔄 Б/У (${s.used_count||0} шт)</div>
-        <div class="pb-val">${fmt(s.used_avg)}</div>
-        ${s.used_min!=null?`<div class="pb-range">от ${fmt(s.used_min)} до ${fmt(s.used_max)}</div>`:""}
-      </div>
+  if (s.new_count>0||s.used_count>0) {
+    html+=`<div class="price-split">
+      <div class="price-box new-box"><div class="pb-label">✅ Новый (${s.new_count||0} шт)</div><div class="pb-val">${fmt(s.new_avg)}</div>${s.new_min!=null?`<div class="pb-range">от ${fmt(s.new_min)} до ${fmt(s.new_max)}</div>`:""}</div>
+      <div class="price-box used-box"><div class="pb-label">🔄 Б/У (${s.used_count||0} шт)</div><div class="pb-val">${fmt(s.used_avg)}</div>${s.used_min!=null?`<div class="pb-range">от ${fmt(s.used_min)} до ${fmt(s.used_max)}</div>`:""}</div>
     </div>`;
   }
 
   if (d.listings?.length) {
-    const hasPrice = d.listings.some(x => x.price);
-    if (hasPrice) {
-      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+    if (d.listings.some(x=>x.price)) {
+      html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <span style="font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.06em">Сортировка:</span>
         <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('asc')">↑ Дешевле</button>
         <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('desc')">↓ Дороже</button>
       </div>`;
     }
-    html += `<div class="listings-grid" id="listings-grid">`;
-    d.listings.forEach(item => {
-      const condCls = COND_CLS[item.condition]||"cond-unknown";
-      const condLabel = COND_LABEL[item.condition]||"—";
-      const imgHtml = item.image ? `<img class="listing-img" src="${esc(item.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : "";
-      const placeholder = `<div class="listing-img-placeholder" ${item.image?"style='display:none'":""}>${CAT_ICONS[state.category]||"🔧"}</div>`;
-      html += `<a class="listing-card" href="${esc(item.url||"#")}" target="_blank" rel="noopener">
+    html+=`<div class="listings-grid" id="listings-grid">`;
+    d.listings.forEach(item=>{
+      const condCls=COND_CLS[item.condition]||"cond-unknown";
+      const condLabel=COND_LABEL[item.condition]||"—";
+      const imgHtml=item.image?`<img class="listing-img" src="${esc(item.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:"";;
+      const placeholder=`<div class="listing-img-placeholder" ${item.image?"style='display:none'":""}>${CAT_ICONS[state.category]||"🔧"}</div>`;
+      html+=`<a class="listing-card" href="${esc(item.url||"#")}" target="_blank" rel="noopener">
         ${imgHtml}${placeholder}
         <div class="listing-body">
           <div class="listing-title">${esc(item.title)}</div>
@@ -549,115 +511,84 @@ function renderMarket() {
         </div>
       </a>`;
     });
-    html += `</div>`;
+    html+=`</div>`;
   } else {
-    html += empty("📭", "Объявлений не найдено. Используйте ссылки на площадки выше.");
+    html+=empty("📭","Объявлений не найдено. Используйте ссылки на площадки выше.");
   }
-
-  p.innerHTML = html;
+  p.innerHTML=html;
 }
 
 /* ══ COMPAT ══ */
 function renderCompat() {
-  const p = $("#tab-compat");
-  if (state.loading) { p.innerHTML = loader(); return; }
-  if (!state.compatData) { p.innerHTML = empty("⚙️", "Введите код пластины (например CNMG 120408) и нажмите Найти"); return; }
-
-  const d = state.compatData;
-  const pr = d.parsed || {};
-  let html = `<div class="section-title" style="margin-bottom:10px">Пластина: <code>${esc(d.insert_code)}</code></div>
+  const p=$("#tab-compat");
+  if (state.loading){p.innerHTML=loader();return;}
+  if (!state.compatData){p.innerHTML=empty("⚙️","Введите код пластины (например CNMG 120408) и нажмите Найти");return;}
+  const d=state.compatData, pr=d.parsed||{};
+  let html=`<div class="section-title" style="margin-bottom:10px">Пластина: <code>${esc(d.insert_code)}</code></div>
     <div class="parse-row">
       ${pr.shape?`<div class="parse-item"><strong>Форма:</strong>${esc(pr.shape)}</div>`:""}
       ${pr.clearance?`<div class="parse-item"><strong>Задний угол:</strong>${esc(pr.clearance)}</div>`:""}
       ${pr.tolerance?`<div class="parse-item"><strong>Допуск:</strong>${esc(pr.tolerance)}</div>`:""}
       ${pr.size_code?`<div class="parse-item"><strong>Размер:</strong>${esc(pr.size_code)}</div>`:""}
     </div>`;
-
-  if (d.applications?.length)
-    html += `<div class="card" style="margin-top:12px"><div class="card-title">Применение</div><div class="app-tags">${d.applications.map(a=>`<span class="app-tag">${esc(a)}</span>`).join("")}</div></div>`;
-  if (d.industries?.length)
-    html += `<div class="card"><div class="card-title">Отрасли</div><div class="app-tags">${d.industries.map(a=>`<span class="app-tag">🏭 ${esc(a)}</span>`).join("")}</div></div>`;
-
+  if (d.applications?.length) html+=`<div class="card" style="margin-top:12px"><div class="card-title">Применение</div><div class="app-tags">${d.applications.map(a=>`<span class="app-tag">${esc(a)}</span>`).join("")}</div></div>`;
+  if (d.industries?.length) html+=`<div class="card"><div class="card-title">Отрасли</div><div class="app-tags">${d.industries.map(a=>`<span class="app-tag">🏭 ${esc(a)}</span>`).join("")}</div></div>`;
   if (d.compatible_holders_by_brand?.length) {
-    html += `<div class="section-title" style="margin:14px 0 10px">Держатели по брендам</div><div class="brands-grid">`;
-    d.compatible_holders_by_brand.forEach(b => {
-      html += `<div class="brand-card">
-        <div class="brand-header">
-          <div class="brand-dot" style="background:${esc(b.logo_color)}"></div>
-          <div><div class="brand-name">${esc(b.brand)}</div><div class="brand-country">${esc(b.country)}</div></div>
-        </div>
-        <div class="brand-line">${esc(b.line)}</div>
-        <div class="brand-desc">${esc(b.line_description)}</div>
-        <div style="margin-bottom:6px"><div style="font-size:.71rem;color:var(--dim);margin-bottom:2px">Держатели:</div>
-          ${b.holders.map(h=>`<span class="holder-tag" onclick="setQuery('${esc(h)}')">${esc(h)}</span>`).join("")}
-        </div>
-        <div><div style="font-size:.71rem;color:var(--dim);margin-bottom:2px">Пластины:</div>
-          ${b.matched_inserts.map(i=>`<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}
-        </div>
+    html+=`<div class="section-title" style="margin:14px 0 10px">Держатели по брендам</div><div class="brands-grid">`;
+    d.compatible_holders_by_brand.forEach(b=>{
+      html+=`<div class="brand-card">
+        <div class="brand-header"><div class="brand-dot" style="background:${esc(b.logo_color)}"></div>
+          <div><div class="brand-name">${esc(b.brand)}</div><div class="brand-country">${esc(b.country)}</div></div></div>
+        <div class="brand-line">${esc(b.line)}</div><div class="brand-desc">${esc(b.line_description)}</div>
+        <div style="margin-bottom:6px"><div style="font-size:.71rem;color:var(--dim);margin-bottom:2px">Держатели:</div>${b.holders.map(h=>`<span class="holder-tag" onclick="setQuery('${esc(h)}')">${esc(h)}</span>`).join("")}</div>
+        <div><div style="font-size:.71rem;color:var(--dim);margin-bottom:2px">Пластины:</div>${b.matched_inserts.map(i=>`<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
       </div>`;
     });
-    html += `</div>`;
+    html+=`</div>`;
   }
-
-  if (d.positive_variants?.length || d.negative_variants?.length)
-    html += `<div class="card" style="margin-top:12px"><div class="card-title">ISO варианты</div>
+  if (d.positive_variants?.length||d.negative_variants?.length)
+    html+=`<div class="card" style="margin-top:12px"><div class="card-title">ISO варианты</div>
       <div style="margin-bottom:6px"><span style="font-size:.75rem;color:var(--muted)">Позитивные: </span>${(d.positive_variants||[]).map(i=>`<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
       <div><span style="font-size:.75rem;color:var(--muted)">Негативные: </span>${(d.negative_variants||[]).map(i=>`<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
     </div>`;
-
-  p.innerHTML = html;
+  p.innerHTML=html;
 }
 
 /* ══ SHAPES ══ */
 function renderShapes() {
-  const p = $("#tab-shapes");
-  const cats = state.categories || {};
-  const shapes = state.insertTypes?.shapes || {};
-  const mats = state.insertTypes?.materials || {};
-
-  let html = `<div class="section-title" style="margin-bottom:12px">Категории инструментов</div><div class="brands-grid" style="margin-bottom:20px">`;
-  Object.entries(cats).forEach(([k, c]) => {
-    const subs = Object.entries(c.subtypes || {});
-    html += `<div class="brand-card">
-      <div class="brand-header">
-        <div style="font-size:1.4rem">${c.icon||""}</div>
-        <div><div class="brand-name">${esc(c.name)}</div><div class="brand-country">Единица: ${esc(c.unit||"шт")}</div></div>
-      </div>
+  const p=$("#tab-shapes"), cats=state.categories||{}, shapes=state.insertTypes?.shapes||{}, mats=state.insertTypes?.materials||{};
+  let html=`<div class="section-title" style="margin-bottom:12px">Категории инструментов</div><div class="brands-grid" style="margin-bottom:20px">`;
+  Object.entries(cats).forEach(([k,c])=>{
+    const subs=Object.entries(c.subtypes||{});
+    html+=`<div class="brand-card"><div class="brand-header"><div style="font-size:1.4rem">${c.icon||""}</div>
+      <div><div class="brand-name">${esc(c.name)}</div><div class="brand-country">Единица: ${esc(c.unit||"шт")}</div></div></div>
       ${subs.length?`<div style="margin-bottom:6px">${subs.map(([,v])=>`<span class="app-tag" style="margin:2px;font-size:.73rem">${esc(v)}</span>`).join("")}</div>`:""}
       ${(c.popular||[]).slice(0,4).map(x=>`<span class="insert-tag" onclick="selectCatAndSearch('${k}','${esc(x)}')">${esc(x)}</span>`).join("")}
     </div>`;
   });
-  html += `</div>`;
-
-  html += `<div class="section-title" style="margin-bottom:10px">Формы сменных пластин (ISO 1832)</div><div class="shape-grid">`;
-  Object.entries(shapes).forEach(([code, s]) => {
-    html += `<div class="shape-card" onclick="showShapeDetail('${code}')"><div class="shape-code">${code}</div><div class="shape-name">${esc(s.name)}</div></div>`;
+  html+=`</div><div class="section-title" style="margin-bottom:10px">Формы сменных пластин (ISO 1832)</div><div class="shape-grid">`;
+  Object.entries(shapes).forEach(([code,s])=>{
+    html+=`<div class="shape-card" onclick="showShapeDetail('${code}')"><div class="shape-code">${code}</div><div class="shape-name">${esc(s.name)}</div></div>`;
   });
-  html += `</div><div id="shape-detail"></div>`;
-
-  html += `<div class="section-title" style="margin:18px 0 10px">Группы материалов ISO 513</div><div class="mat-grid">`;
-  Object.entries(mats).forEach(([code, m]) => {
-    html += `<div class="mat-badge"><div class="mat-dot" style="background:${esc(m.color)}"></div><div><strong>${code}</strong> — ${esc(m.name)}<div style="font-size:.7rem;color:var(--dim)">${esc(m.description)}</div></div></div>`;
+  html+=`</div><div id="shape-detail"></div>`;
+  html+=`<div class="section-title" style="margin:18px 0 10px">Группы материалов ISO 513</div><div class="mat-grid">`;
+  Object.entries(mats).forEach(([code,m])=>{
+    html+=`<div class="mat-badge"><div class="mat-dot" style="background:${esc(m.color)}"></div><div><strong>${code}</strong> — ${esc(m.name)}<div style="font-size:.7rem;color:var(--dim)">${esc(m.description)}</div></div></div>`;
   });
-  html += `</div>`;
-  p.innerHTML = html;
+  html+=`</div>`;
+  p.innerHTML=html;
 }
 
-window.selectCatAndSearch = function(cat, q) {
-  $$(".cat-btn").forEach(b => b.classList.toggle("active", b.dataset.cat === cat));
-  state.category = cat;
-  renderQuickChips();
-  setQuery(q);
-  $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "market"));
-  state.tab = "market";
-  renderTab();
+window.selectCatAndSearch=function(cat,q){
+  $$(".cat-btn").forEach(b=>b.classList.toggle("active",b.dataset.cat===cat));
+  state.category=cat; renderQuickChips(); setQuery(q);
+  $$(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab==="market"));
+  state.tab="market"; renderTab();
 };
-
-window.showShapeDetail = function(code) {
-  const shapes = state.insertTypes?.shapes || {};
-  const s = shapes[code]; if (!s) return;
-  $$(".shape-card").forEach(c => c.classList.toggle("active", c.querySelector(".shape-code")?.textContent === code));
-  $("#shape-detail").innerHTML = `<div class="card" style="margin-top:10px">
+window.showShapeDetail=function(code){
+  const shapes=state.insertTypes?.shapes||{}, s=shapes[code]; if (!s) return;
+  $$(".shape-card").forEach(c=>c.classList.toggle("active",c.querySelector(".shape-code")?.textContent===code));
+  $("#shape-detail").innerHTML=`<div class="card" style="margin-top:10px">
     <div class="card-title">${code} — ${esc(s.name)}</div>
     <p style="font-size:.84rem;color:var(--muted);margin-bottom:10px">${esc(s.description)}</p>
     <div class="app-tags">${s.applications.map(a=>`<span class="app-tag">${esc(a)}</span>`).join("")}</div>
@@ -666,74 +597,57 @@ window.showShapeDetail = function(code) {
 
 /* ══ HOLDERS ══ */
 function renderHoldersTab() {
-  const p = $("#tab-holders");
-  if (!state.holders) { p.innerHTML = loader(); return; }
-  let html = `<div class="section-title" style="margin-bottom:12px">Поиск по держателю</div>
+  const p=$("#tab-holders"); if (!state.holders){p.innerHTML=loader();return;}
+  let html=`<div class="section-title" style="margin-bottom:12px">Поиск по держателю</div>
     <div class="holder-search-row">
       <input id="holder-input" type="text" placeholder="Начало кода держателя, например PCLNR...">
       <button class="btn btn-secondary" onclick="doHolderSearch()">Найти</button>
     </div>
     <div id="holder-results"></div>
-    <div class="section-title" style="margin:16px 0 10px">Все держатели по брендам</div>
-    <div class="brands-grid">`;
-  state.holders.forEach(brand => {
-    html += `<div class="brand-card">
-      <div class="brand-header">
-        <div class="brand-dot" style="background:${esc(brand.logo_color)}"></div>
-        <div><div class="brand-name">${esc(brand.brand)}</div><div class="brand-country">${esc(brand.country)}</div></div>
-      </div>`;
-    brand.lines.forEach(line => {
-      html += `<div style="margin-bottom:10px">
-        <div class="brand-line">${esc(line.name)}</div>
-        <div class="brand-desc">${esc(line.description)}</div>
+    <div class="section-title" style="margin:16px 0 10px">Все держатели по брендам</div><div class="brands-grid">`;
+  state.holders.forEach(brand=>{
+    html+=`<div class="brand-card"><div class="brand-header"><div class="brand-dot" style="background:${esc(brand.logo_color)}"></div>
+      <div><div class="brand-name">${esc(brand.brand)}</div><div class="brand-country">${esc(brand.country)}</div></div></div>`;
+    brand.lines.forEach(line=>{
+      html+=`<div style="margin-bottom:10px"><div class="brand-line">${esc(line.name)}</div><div class="brand-desc">${esc(line.description)}</div>
         <div>${line.holders.slice(0,4).map(h=>`<span class="holder-tag">${esc(h)}</span>`).join("")}</div>
         <div style="margin-top:4px">${line.inserts.slice(0,4).map(i=>`<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
       </div>`;
     });
-    html += `</div>`;
+    html+=`</div>`;
   });
-  html += `</div>`;
-  p.innerHTML = html;
+  html+=`</div>`; p.innerHTML=html;
 }
 
-window.doHolderSearch = async function() {
-  const inp = $("#holder-input"); if (!inp) return;
-  const prefix = inp.value.trim();
-  const res = $("#holder-results");
-  if (!prefix) { res.innerHTML = ""; return; }
-  res.innerHTML = loader();
+window.doHolderSearch=async function(){
+  const inp=$("#holder-input"); if (!inp) return;
+  const prefix=inp.value.trim(), res=$("#holder-results");
+  if (!prefix){res.innerHTML="";return;}
+  res.innerHTML=loader();
   try {
-    const data = await api(`/api/search-by-holder?prefix=${encodeURIComponent(prefix)}`);
-    if (!data.length) { res.innerHTML = empty("🔍", "Не найдено"); return; }
-    res.innerHTML = `<div class="brands-grid">${data.map(it=>`<div class="brand-card">
+    const data=await api(`/api/search-by-holder?prefix=${encodeURIComponent(prefix)}`);
+    if (!data.length){res.innerHTML=empty("🔍","Не найдено");return;}
+    res.innerHTML=`<div class="brands-grid">${data.map(it=>`<div class="brand-card">
       <div class="brand-name" style="margin-bottom:6px">${esc(it.brand)} — ${esc(it.line)}</div>
       <div>${it.holders.map(h=>`<span class="holder-tag">${esc(h)}</span>`).join("")}</div>
       <div style="margin-top:6px">${it.compatible_inserts.map(i=>`<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
     </div>`).join("")}</div>`;
-  } catch(e) { res.innerHTML = `<div class="alert alert-warn">Ошибка: ${esc(e.message)}</div>`; }
+  } catch(e){res.innerHTML=`<div class="alert alert-warn">Ошибка: ${esc(e.message)}</div>`;}
 };
 
-/* ══ CALCULATOR ══ */
-function setupCalc() {
-  const price = $("#calc-price"), qty = $("#calc-qty"), res = $("#calc-result");
-  if (!price || !qty || !res) return;
-  function recalc() {
-    const p = parseFloat(price.value), q = parseFloat(qty.value);
-    res.textContent = (p > 0 && q > 0) ? (p*q).toLocaleString("ru-RU")+" ₽" : "—";
-  }
-  price.addEventListener("input", recalc);
-  qty.addEventListener("input", recalc);
+function setupCalc(){
+  const price=$("#calc-price"),qty=$("#calc-qty"),res=$("#calc-result"); if (!price||!qty||!res) return;
+  function recalc(){const p=parseFloat(price.value),q=parseFloat(qty.value); res.textContent=(p>0&&q>0)?(p*q).toLocaleString("ru-RU")+" ₽":"—";}
+  price.addEventListener("input",recalc); qty.addEventListener("input",recalc);
 }
 
-window.sortListings = function(dir) {
+window.sortListings=function(dir){
   if (!state.marketData?.listings) return;
-  const sorted = [...state.marketData.listings].sort((a, b) => {
-    const pa = a.price ?? (dir==='asc'?Infinity:-Infinity);
-    const pb = b.price ?? (dir==='asc'?Infinity:-Infinity);
-    return dir==='asc' ? pa-pb : pb-pa;
+  const sorted=[...state.marketData.listings].sort((a,b)=>{
+    const pa=a.price??(dir==="asc"?Infinity:-Infinity), pb=b.price??(dir==="asc"?Infinity:-Infinity);
+    return dir==="asc"?pa-pb:pb-pa;
   });
-  state.marketData = { ...state.marketData, listings: sorted };
-  renderMarket();
+  state.marketData={...state.marketData,listings:sorted}; renderMarket();
 };
 
-document.addEventListener("DOMContentLoaded", () => { init(); setupCalc(); renderHistory(); });
+document.addEventListener("DOMContentLoaded",()=>{init();setupCalc();renderHistory();});

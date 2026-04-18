@@ -1,141 +1,140 @@
 import os
-from fastapi import FastAPI, Query, Request, Response, Cookie
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Query, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
-import scraper
-import compatibility
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+from scraper import MarketScraper
+from compatibility import CompatibilityDB
 import auth
 
-auth.init_db()
+app = FastAPI(title="ToolMarket Monitor", version="2.0.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"], allow_credentials=True)
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+scraper = MarketScraper()
+compat = CompatibilityDB()
 
 FRONTEND = os.path.join(os.path.dirname(__file__), "..", "frontend")
-app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
-@app.get("/")
-async def root(): return FileResponse(os.path.join(FRONTEND, "index.html"))
 
-@app.get("/style.css")
-async def css(): return FileResponse(os.path.join(FRONTEND, "style.css"))
+@app.get("/api/ping")
+async def ping():
+    return {"status": "ok"}
 
-@app.get("/app.js")
-async def js(): return FileResponse(os.path.join(FRONTEND, "app.js"))
-
-@app.get("/favicon.ico")
-async def favicon(): return FileResponse(os.path.join(FRONTEND, "favicon.ico"))
-
-@app.get("/reset-password")
-async def reset_page(): return FileResponse(os.path.join(FRONTEND, "index.html"))
-
-class AuthBody(BaseModel):
-    email: str
-    password: str
-
-class ForgotBody(BaseModel):
-    email: str
-
-class ResetBody(BaseModel):
-    token: str
-    password: str
-
-@app.post("/api/auth/register")
-async def register(body: AuthBody, response: Response):
-    result = auth.create_user(body.email, body.password)
-    if result["ok"]:
-        login = auth.login_user(body.email, body.password)
-        response.set_cookie("session", login["token"], max_age=30*24*3600, httponly=True, samesite="lax")
-        return {"ok": True, "email": body.email}
-    return JSONResponse(status_code=400, content=result)
-
-@app.post("/api/auth/login")
-async def login(body: AuthBody, response: Response):
-    result = auth.login_user(body.email, body.password)
-    if result["ok"]:
-        response.set_cookie("session", result["token"], max_age=30*24*3600, httponly=True, samesite="lax")
-        return {"ok": True, "email": result["email"]}
-    return JSONResponse(status_code=401, content=result)
-
-@app.post("/api/auth/logout")
-async def logout(response: Response, session: Optional[str] = Cookie(None)):
-    if session: auth.logout_user(session)
-    response.delete_cookie("session")
-    return {"ok": True}
-
-@app.get("/api/auth/me")
-async def me(session: Optional[str] = Cookie(None)):
-    user = auth.get_user_by_token(session)
-    if not user: return JSONResponse(status_code=401, content={"ok": False})
-    return {"ok": True, "email": user["email"], "id": user["id"]}
-
-@app.post("/api/auth/forgot")
-async def forgot(body: ForgotBody):
-    result = auth.create_reset_token(body.email)
-    if result["ok"]:
-        return {"ok": True, "message": "Письмо отправлено"}
-    return JSONResponse(status_code=400, content=result)
-
-@app.post("/api/auth/reset")
-async def reset(body: ResetBody, response: Response):
-    result = auth.reset_password(body.token, body.password)
-    if result["ok"]:
-        return {"ok": True}
-    return JSONResponse(status_code=400, content=result)
-
-class WatchBody(BaseModel):
-    query: str
-    category: str
-    price: Optional[float] = None
-
-@app.get("/api/watchlist")
-async def get_watchlist(session: Optional[str] = Cookie(None)):
-    user = auth.get_user_by_token(session)
-    if not user: return JSONResponse(status_code=401, content={"ok": False})
-    return auth.get_watchlist(user["id"])
-
-@app.post("/api/watchlist")
-async def add_watchlist(body: WatchBody, session: Optional[str] = Cookie(None)):
-    user = auth.get_user_by_token(session)
-    if not user: return JSONResponse(status_code=401, content={"ok": False})
-    if body.price: auth.add_price_history(user["id"], body.query, body.category, body.price)
-    return auth.add_to_watchlist(user["id"], body.query, body.category, body.price)
-
-@app.delete("/api/watchlist")
-async def remove_watchlist(body: WatchBody, session: Optional[str] = Cookie(None)):
-    user = auth.get_user_by_token(session)
-    if not user: return JSONResponse(status_code=401, content={"ok": False})
-    return auth.remove_from_watchlist(user["id"], body.query, body.category)
-
-@app.get("/api/watchlist/history")
-async def price_history(q: str, category: str, session: Optional[str] = Cookie(None)):
-    user = auth.get_user_by_token(session)
-    if not user: return JSONResponse(status_code=401, content={"ok": False})
-    return auth.get_price_history(user["id"], q, category)
 
 @app.get("/api/market")
-async def market(q: str = Query(...), category: str = Query("inserts"), limit: int = Query(24, ge=1, le=50)):
-    return await scraper.search(q, category, limit)
+async def market(
+    q: str = Query(...),
+    category: str = Query("inserts"),
+    limit: int = Query(24, ge=1, le=50),
+):
+    cat_data = compat.get_categories().get(category, {})
+    keywords = cat_data.get("search_keywords", [])
+    search_q = f"{keywords[0]} {q}" if keywords else q
+    return await scraper.search(search_q, category, limit)
+
 
 @app.get("/api/compatibility/{insert_code}")
-async def compat(insert_code: str):
-    return compatibility.get_compatibility(insert_code)
+async def get_compat(insert_code: str):
+    r = compat.get_compatibility(insert_code)
+    if "error" in r:
+        raise HTTPException(400, r["error"])
+    return r
 
-@app.get("/api/insert-types")
-async def insert_types():
-    return compatibility.get_insert_types()
 
 @app.get("/api/holders")
-async def holders():
-    return compatibility.get_all_holders()
+async def get_holders():
+    return compat.get_holders()
+
+
+@app.get("/api/insert-types")
+async def get_insert_types():
+    return compat.get_insert_types()
+
 
 @app.get("/api/categories")
-async def categories():
-    return compatibility.get_categories()
+async def get_categories():
+    return compat.get_categories()
+
 
 @app.get("/api/search-by-holder")
 async def search_by_holder(prefix: str = Query(...)):
-    return compatibility.search_by_holder(prefix)
+    return compat.search_by_holder(prefix)
+
+
+# ── Auth ──
+@app.post("/api/auth/register")
+async def register(request: Request, response: Response):
+    data = await request.json()
+    return auth.register(data.get("email", ""), data.get("password", ""), response)
+
+
+@app.post("/api/auth/login")
+async def login(request: Request, response: Response):
+    data = await request.json()
+    return auth.login(data.get("email", ""), data.get("password", ""), response)
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, response: Response):
+    token = request.cookies.get("session")
+    return auth.logout(token, response)
+
+
+@app.get("/api/auth/me")
+async def me(request: Request):
+    token = request.cookies.get("session")
+    return auth.get_me(token)
+
+
+@app.post("/api/auth/forgot")
+async def forgot(request: Request):
+    data = await request.json()
+    return auth.create_reset_token(data.get("email", ""))
+
+
+@app.post("/api/auth/reset")
+async def reset(request: Request):
+    data = await request.json()
+    return auth.reset_password(data.get("token", ""), data.get("password", ""))
+
+
+# ── Watchlist ──
+@app.get("/api/watchlist")
+async def get_watchlist(request: Request):
+    token = request.cookies.get("session")
+    return auth.get_watchlist(token)
+
+
+@app.post("/api/watchlist")
+async def add_watchlist(request: Request):
+    token = request.cookies.get("session")
+    data = await request.json()
+    return auth.add_watchlist(token, data)
+
+
+@app.delete("/api/watchlist/{query}")
+async def del_watchlist(query: str, request: Request):
+    token = request.cookies.get("session")
+    return auth.delete_watchlist(token, query)
+
+
+if os.path.isdir(FRONTEND):
+    app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+
+    @app.get("/")
+    async def index():
+        return FileResponse(os.path.join(FRONTEND, "index.html"))
+
+    @app.get("/{path:path}")
+    async def spa(path: str):
+        fp = os.path.join(FRONTEND, path)
+        if os.path.isfile(fp):
+            return FileResponse(fp)
+        return FileResponse(os.path.join(FRONTEND, "index.html"))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

@@ -10,22 +10,6 @@ async function checkAuth() {
   renderAuthBar();
 }
 
-async function doRegister(email, password) {
-  const r = await fetch("/api/auth/register", {
-    method: "POST", headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({email, password})
-  });
-  return r.json();
-}
-
-async function doLogin(email, password) {
-  const r = await fetch("/api/auth/login", {
-    method: "POST", headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({email, password})
-  });
-  return r.json();
-}
-
 async function doLogout() {
   await fetch("/api/auth/logout", {method:"POST"});
   currentUser = null;
@@ -56,17 +40,14 @@ function showAuthModal(mode = "login") {
   const div = document.createElement("div");
   div.id = "auth-modal";
   div.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center";
-  div.innerHTML = `<div style="background:#1a202c;border:1px solid var(--border);border-radius:16px;padding:32px;width:100%;max-width:360px;box-shadow:0 8px 40px rgba(0,0,0,.6)">
+  div.innerHTML = `<div style="position:relative;background:#1a202c;border:1px solid var(--border);border-radius:16px;padding:32px;width:100%;max-width:360px;box-shadow:0 8px 40px rgba(0,0,0,.6)">
     <div style="display:flex;gap:0;margin-bottom:24px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
       <button id="tab-login-btn" onclick="switchAuthTab('login')" style="flex:1;padding:10px;border:none;cursor:pointer;font-size:.9rem;font-weight:600;background:${mode==="login"?"var(--accent)":"var(--card)"};color:${mode==="login"?"#fff":"var(--muted)"}">Войти</button>
       <button id="tab-reg-btn" onclick="switchAuthTab('register')" style="flex:1;padding:10px;border:none;cursor:pointer;font-size:.9rem;font-weight:600;background:${mode==="register"?"var(--accent)":"var(--card)"};color:${mode==="register"?"#fff":"var(--muted)"}">Регистрация</button>
     </div>
-    <div id="auth-form-wrap">
-      ${renderAuthForm(mode)}
-    </div>
+    <div id="auth-form-wrap">${renderAuthForm(mode)}</div>
     <button onclick="document.getElementById('auth-modal').remove()" style="position:absolute;top:16px;right:16px;background:none;border:none;color:var(--dim);font-size:1.2rem;cursor:pointer">✕</button>
   </div>`;
-  div.style.position = "fixed";
   document.body.appendChild(div);
   div.addEventListener("click", e => { if (e.target === div) div.remove(); });
 }
@@ -78,14 +59,17 @@ function renderAuthForm(mode) {
       <input id="auth-email" type="email" required placeholder="you@example.com"
         style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;box-sizing:border-box">
     </div>
-    <div style="margin-bottom:20px">
+    <div style="margin-bottom:${mode==="login"?"8px":"20px"}">
       <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:6px">Пароль</label>
       <input id="auth-password" type="password" required placeholder="Минимум 6 символов" minlength="6"
         style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;box-sizing:border-box">
     </div>
+    ${mode==="login"?`<div style="text-align:right;margin-bottom:16px">
+      <a href="#" onclick="showForgotForm()" style="font-size:.78rem;color:var(--accent);text-decoration:none">Забыли пароль?</a>
+    </div>`:""}
     <div id="auth-error" style="color:#fc8181;font-size:.82rem;margin-bottom:12px;display:none"></div>
     <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;font-size:.95rem">
-      ${mode === "login" ? "Войти" : "Зарегистрироваться"}
+      ${mode==="login"?"Войти":"Зарегистрироваться"}
     </button>
   </form>`;
 }
@@ -98,6 +82,48 @@ window.switchAuthTab = function(mode) {
   document.getElementById("auth-form-wrap").innerHTML = renderAuthForm(mode);
 };
 
+window.showForgotForm = function() {
+  const wrap = document.getElementById("auth-form-wrap"); if (!wrap) return;
+  wrap.innerHTML = `<form onsubmit="submitForgot(event)">
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:16px">Введите email — отправим ссылку для сброса пароля</p>
+    <div style="margin-bottom:16px">
+      <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:6px">Email</label>
+      <input id="forgot-email" type="email" required placeholder="you@example.com"
+        style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;box-sizing:border-box">
+    </div>
+    <div id="forgot-msg" style="font-size:.82rem;margin-bottom:12px;display:none"></div>
+    <button type="submit" class="btn btn-primary" style="width:100%;padding:12px">Отправить письмо</button>
+    <div style="text-align:center;margin-top:12px">
+      <a href="#" onclick="switchAuthTab('login')" style="font-size:.78rem;color:var(--dim);text-decoration:none">← Вернуться к входу</a>
+    </div>
+  </form>`;
+};
+
+window.submitForgot = async function(e) {
+  e.preventDefault();
+  const email = document.getElementById("forgot-email").value;
+  const msg = document.getElementById("forgot-msg");
+  const btn = e.target.querySelector("button[type=submit]");
+  btn.disabled = true; btn.textContent = "...";
+  try {
+    const r = await fetch("/api/auth/forgot", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({email})
+    });
+    const data = await r.json();
+    msg.style.display = "block";
+    if (data.ok) {
+      msg.style.color = "#48bb78";
+      msg.textContent = "✅ Письмо отправлено! Проверьте почту.";
+      btn.style.display = "none";
+    } else {
+      msg.style.color = "#fc8181";
+      msg.textContent = data.error || "Ошибка";
+      btn.disabled = false; btn.textContent = "Отправить письмо";
+    }
+  } catch { msg.style.display="block"; msg.style.color="#fc8181"; msg.textContent="Ошибка соединения"; btn.disabled=false; btn.textContent="Отправить письмо"; }
+};
+
 window.submitAuth = async function(e, mode) {
   e.preventDefault();
   const email = document.getElementById("auth-email").value;
@@ -105,7 +131,11 @@ window.submitAuth = async function(e, mode) {
   const errEl = document.getElementById("auth-error");
   const btn = e.target.querySelector("button[type=submit]");
   btn.disabled = true; btn.textContent = "...";
-  const result = mode === "login" ? await doLogin(email, password) : await doRegister(email, password);
+  const r = await fetch(mode==="login"?"/api/auth/login":"/api/auth/register", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({email, password})
+  });
+  const result = await r.json();
   if (result.ok) {
     currentUser = result;
     document.getElementById("auth-modal").remove();
@@ -116,11 +146,57 @@ window.submitAuth = async function(e, mode) {
     errEl.textContent = result.error || "Ошибка";
     errEl.style.display = "block";
     btn.disabled = false;
-    btn.textContent = mode === "login" ? "Войти" : "Зарегистрироваться";
+    btn.textContent = mode==="login"?"Войти":"Зарегистрироваться";
   }
 };
 
 window.showAuthModal = showAuthModal;
+
+/* ── Reset Password ── */
+function showResetForm(token) {
+  const div = document.createElement("div");
+  div.id = "auth-modal";
+  div.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center";
+  div.innerHTML = `<div style="background:#1a202c;border:1px solid var(--border);border-radius:16px;padding:32px;width:100%;max-width:360px">
+    <h3 style="margin-bottom:20px;color:var(--accent)">🔑 Новый пароль</h3>
+    <form onsubmit="submitReset(event,'${token}')">
+      <div style="margin-bottom:16px">
+        <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:6px">Новый пароль</label>
+        <input id="reset-password" type="password" required minlength="6" placeholder="Минимум 6 символов"
+          style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;box-sizing:border-box">
+      </div>
+      <div id="reset-msg" style="font-size:.82rem;margin-bottom:12px;display:none"></div>
+      <button type="submit" class="btn btn-primary" style="width:100%;padding:12px">Сохранить пароль</button>
+    </form>
+  </div>`;
+  document.body.appendChild(div);
+}
+
+window.submitReset = async function(e, token) {
+  e.preventDefault();
+  const password = document.getElementById("reset-password").value;
+  const msg = document.getElementById("reset-msg");
+  const btn = e.target.querySelector("button[type=submit]");
+  btn.disabled = true; btn.textContent = "...";
+  try {
+    const r = await fetch("/api/auth/reset", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({token, password})
+    });
+    const data = await r.json();
+    msg.style.display = "block";
+    if (data.ok) {
+      msg.style.color = "#48bb78";
+      msg.textContent = "✅ Пароль изменён! Входите с новым паролем.";
+      btn.style.display = "none";
+      setTimeout(() => { window.location.href = "/"; }, 2000);
+    } else {
+      msg.style.color = "#fc8181";
+      msg.textContent = data.error || "Ошибка";
+      btn.disabled = false; btn.textContent = "Сохранить пароль";
+    }
+  } catch { msg.style.display="block"; msg.style.color="#fc8181"; msg.textContent="Ошибка"; btn.disabled=false; btn.textContent="Сохранить пароль"; }
+};
 
 /* ── Watchlist sync ── */
 async function syncWatchlistToServer() {
@@ -128,8 +204,8 @@ async function syncWatchlistToServer() {
   const local = getWatchlist();
   for (const item of local) {
     await fetch("/api/watchlist", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({query: item.query, category: item.category, price: item.price})
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({query:item.query, category:item.category, price:item.price})
     });
   }
   await loadWatchlistFromServer();
@@ -141,31 +217,20 @@ async function loadWatchlistFromServer() {
     const r = await fetch("/api/watchlist");
     if (!r.ok) return;
     const data = await r.json();
-    const list = data.map(x => ({
-      query: x.query, category: x.category, price: x.price,
-      addedAt: x.added_at, prevPrice: null
-    }));
+    const list = data.map(x => ({query:x.query, category:x.category, price:x.price, addedAt:x.added_at, prevPrice:null}));
     localStorage.setItem("watchlist", JSON.stringify(list));
     updateWatchBadge();
   } catch(e) {}
 }
 
 /* ── Price History ── */
-function getItemHistory(q, cat) {
-  try { return JSON.parse(localStorage.getItem(`ph_${q}_${cat}`) || "[]"); } catch { return []; }
-}
+function getItemHistory(q, cat) { try { return JSON.parse(localStorage.getItem(`ph_${q}_${cat}`) || "[]"); } catch { return []; } }
 function addPriceHistory(q, cat, price) {
   if (!price) return;
   let h = getItemHistory(q, cat);
   h.push({ price, date: new Date().toISOString() });
   h = h.slice(-30);
   localStorage.setItem(`ph_${q}_${cat}`, JSON.stringify(h));
-  if (currentUser) {
-    fetch("/api/watchlist/history", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({query: q, category: cat, price})
-    }).catch(()=>{});
-  }
 }
 function renderSparkline(history) {
   if (!history || history.length < 2) return "";
@@ -197,29 +262,20 @@ function toggleWatch() {
   if (isWatched(q)) {
     list = list.filter(x => !(x.query === q && x.category === state.category));
     saveWatchlist(list);
-    if (currentUser) {
-      fetch("/api/watchlist", { method: "DELETE", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({query: q, category: state.category}) }).catch(()=>{});
-    }
+    if (currentUser) fetch("/api/watchlist", {method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q,category:state.category})}).catch(()=>{});
   } else {
     const price = state.marketData?.stats?.avg_price || null;
-    list.unshift({ query: q, category: state.category, addedAt: new Date().toISOString(), price, prevPrice: null });
+    list.unshift({query:q, category:state.category, addedAt:new Date().toISOString(), price, prevPrice:null});
     saveWatchlist(list);
     if (price) addPriceHistory(q, state.category, price);
-    if (currentUser) {
-      fetch("/api/watchlist", { method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({query: q, category: state.category, price}) }).catch(()=>{});
-    }
+    if (currentUser) fetch("/api/watchlist", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q,category:state.category,price})}).catch(()=>{});
   }
   renderMarket();
 }
 
 function removeWatch(q, cat) {
   saveWatchlist(getWatchlist().filter(x => !(x.query === q && x.category === cat)));
-  if (currentUser) {
-    fetch("/api/watchlist", { method: "DELETE", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({query: q, category: cat}) }).catch(()=>{});
-  }
+  if (currentUser) fetch("/api/watchlist", {method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q,category:cat})}).catch(()=>{});
   renderWatchlist();
 }
 
@@ -232,17 +288,11 @@ async function updateWatchPrice(q, cat) {
     const newPrice = data?.stats?.avg_price || null;
     if (newPrice) addPriceHistory(q, cat, newPrice);
     let list = getWatchlist();
-    list = list.map(x => (x.query===q && x.category===cat)
-      ? {...x, prevPrice: x.price, price: newPrice, updatedAt: new Date().toISOString()} : x);
+    list = list.map(x => (x.query===q&&x.category===cat) ? {...x, prevPrice:x.price, price:newPrice, updatedAt:new Date().toISOString()} : x);
     saveWatchlist(list);
-    if (currentUser && newPrice) {
-      fetch("/api/watchlist", { method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({query: q, category: cat, price: newPrice}) }).catch(()=>{});
-    }
+    if (currentUser && newPrice) fetch("/api/watchlist", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q,category:cat,price:newPrice})}).catch(()=>{});
     renderWatchlist();
-  } catch(e) {
-    if (btn) { btn.textContent = "↻ Обновить"; btn.disabled = false; }
-  }
+  } catch(e) { if (btn) { btn.textContent="↻ Обновить"; btn.disabled=false; } }
 }
 
 async function checkPriceChanges() {
@@ -253,11 +303,10 @@ async function checkPriceChanges() {
       const data = await api(`/api/market?q=${encodeURIComponent(item.query)}&category=${encodeURIComponent(item.category)}`);
       const newPrice = data?.stats?.avg_price;
       if (newPrice && item.price && Math.abs(newPrice - item.price) / item.price > 0.05) {
-        changes.push({ query: item.query, oldPrice: item.price, newPrice });
+        changes.push({query:item.query, oldPrice:item.price, newPrice});
         addPriceHistory(item.query, item.category, newPrice);
         let wl = getWatchlist();
-        wl = wl.map(x => (x.query===item.query && x.category===item.category)
-          ? {...x, prevPrice: x.price, price: newPrice, updatedAt: new Date().toISOString()} : x);
+        wl = wl.map(x => (x.query===item.query&&x.category===item.category) ? {...x, prevPrice:x.price, price:newPrice, updatedAt:new Date().toISOString()} : x);
         saveWatchlist(wl);
       }
     } catch(e) {}
@@ -274,11 +323,9 @@ function showPriceAlert(changes) {
     <strong style="color:var(--accent)">📊 Изменение цен</strong>
     <span style="cursor:pointer;color:var(--dim);font-size:1.1rem" onclick="document.getElementById('price-alert').remove()">✕</span>
   </div>` + changes.map(c => {
-    const diff = c.newPrice - c.oldPrice, pct = Math.round(Math.abs(diff)/c.oldPrice*100), up = diff > 0;
-    return `<div style="margin-bottom:6px;font-size:.84rem">
-      <div style="color:var(--text)">${esc(c.query)}</div>
-      <div style="${up?"color:#fc8181":"color:#48bb78"}">${up?"▲":"▼"} ${pct}% · ${c.oldPrice.toLocaleString("ru-RU")} → ${c.newPrice.toLocaleString("ru-RU")} ₽</div>
-    </div>`;
+    const diff=c.newPrice-c.oldPrice, pct=Math.round(Math.abs(diff)/c.oldPrice*100), up=diff>0;
+    return `<div style="margin-bottom:6px;font-size:.84rem"><div style="color:var(--text)">${esc(c.query)}</div>
+      <div style="${up?"color:#fc8181":"color:#48bb78"}">${up?"▲":"▼"} ${pct}% · ${c.oldPrice.toLocaleString("ru-RU")} → ${c.newPrice.toLocaleString("ru-RU")} ₽</div></div>`;
   }).join("") +
   `<button class="btn btn-secondary" style="width:100%;margin-top:8px;font-size:.78rem" onclick="document.getElementById('price-alert').remove()">Понятно</button>`;
   document.body.appendChild(div);
@@ -291,7 +338,7 @@ function updateWatchBadge() {
   badge.textContent = cnt; badge.style.display = cnt ? "" : "none";
 }
 
-const watchState = { sort: "date", cat: "all" };
+const watchState = { sort:"date", cat:"all" };
 
 function renderWatchlist() {
   const p = $("#tab-watch"); if (!p) return;
@@ -299,7 +346,7 @@ function renderWatchlist() {
   if (!list.length) {
     p.innerHTML = currentUser
       ? empty("⭐", "Список пуст. Найдите инструмент и нажмите ☆ Отслеживать")
-      : `<div class="empty"><div class="icon">👤</div>Войдите в аккаунт чтобы синхронизировать список между устройствами<br><br><button class="btn btn-primary" onclick="showAuthModal()">Войти / Регистрация</button></div>`;
+      : `<div class="empty"><div class="icon">👤</div>Войдите чтобы синхронизировать список между устройствами<br><br><button class="btn btn-primary" onclick="showAuthModal()">Войти / Регистрация</button></div>`;
     return;
   }
   const cats = [...new Set(list.map(x => x.category))];
@@ -323,7 +370,7 @@ function renderWatchlist() {
       ${cats.map(c=>`<button class="btn ${watchState.cat===c?"btn-primary":"btn-secondary"}" style="font-size:.75rem;padding:5px 12px" onclick="setWatchCat('${c}')">${CAT_ICONS[c]||""} ${esc(c)}</button>`).join("")}
     </div>
   </div>
-  ${!currentUser ? `<div class="alert alert-info" style="margin-bottom:16px">💡 <a href="#" onclick="showAuthModal()" style="color:var(--accent)">Войдите</a> чтобы список сохранялся на сервере и был доступен с любого устройства</div>` : ""}
+  ${!currentUser?`<div class="alert alert-info" style="margin-bottom:16px">💡 <a href="#" onclick="showAuthModal()" style="color:var(--accent)">Войдите</a> чтобы список сохранялся на сервере</div>`:""}
   <div style="margin-bottom:12px;font-size:.85rem;color:var(--dim)">⭐ ${list.length} позиций</div>
   <div class="listings-grid">`;
 
@@ -336,10 +383,9 @@ function renderWatchlist() {
     const btnId = `upd-${btoa(item.query+item.category).replace(/[^a-z0-9]/gi,"").slice(0,8)}`;
     const history = getItemHistory(item.query, item.category);
     const sparkline = renderSparkline(history);
-
     html += `<div class="listing-card" style="cursor:default;display:flex;flex-direction:column">
       <div class="listing-body" style="flex:1">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
           <div style="font-size:.7rem;color:var(--dim)">${CAT_ICONS[item.category]||""} ${esc(item.category)}</div>
           <div style="font-size:.7rem;color:var(--dim)">📅 ${date}</div>
         </div>
@@ -349,20 +395,11 @@ function renderWatchlist() {
         </div>
         <div style="margin-bottom:4px">
           <div style="font-size:.72rem;color:var(--dim);margin-bottom:2px">Текущая цена:</div>
-          <div class="listing-price" style="margin:0">${item.price ? item.price.toLocaleString("ru-RU")+" ₽" : "Неизвестно"}</div>
+          <div class="listing-price" style="margin:0">${item.price?item.price.toLocaleString("ru-RU")+" ₽":"Неизвестно"}</div>
         </div>
-        ${hasPriceChange ? `<div style="font-size:.78rem;${priceUp?"color:#fc8181":"color:#48bb78"};margin-bottom:4px">
-          ${priceUp?"▲":"▼"} ${pricePct}% от ${item.prevPrice.toLocaleString("ru-RU")} ₽
-        </div>` : ""}
-        ${sparkline ? `<div style="margin-bottom:4px">
-          <div style="font-size:.68rem;color:var(--dim);margin-bottom:2px">📈 История (${history.length} точек)</div>
-          ${sparkline}
-          <div style="display:flex;justify-content:space-between;font-size:.68rem;color:var(--dim);margin-top:2px">
-            <span>${new Date(history[0].date).toLocaleDateString("ru-RU")}</span>
-            <span>${new Date(history[history.length-1].date).toLocaleDateString("ru-RU")}</span>
-          </div>
-        </div>` : ""}
-        ${updDate ? `<div style="font-size:.7rem;color:var(--dim)">Обновлено: ${updDate}</div>` : ""}
+        ${hasPriceChange?`<div style="font-size:.78rem;${priceUp?"color:#fc8181":"color:#48bb78"};margin-bottom:4px">${priceUp?"▲":"▼"} ${pricePct}% от ${item.prevPrice.toLocaleString("ru-RU")} ₽</div>`:""}
+        ${sparkline?`<div style="margin-bottom:4px"><div style="font-size:.68rem;color:var(--dim);margin-bottom:2px">📈 История (${history.length} точек)</div>${sparkline}</div>`:""}
+        ${updDate?`<div style="font-size:.7rem;color:var(--dim)">Обновлено: ${updDate}</div>`:""}
       </div>
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
         <button class="btn btn-primary" style="font-size:.73rem;padding:5px 10px;flex:1"
@@ -378,20 +415,20 @@ function renderWatchlist() {
   p.innerHTML = html;
 }
 
-window.setWatchSort = function(s) { watchState.sort = s; renderWatchlist(); };
-window.setWatchCat = function(c) { watchState.cat = c; renderWatchlist(); };
+window.setWatchSort = function(s) { watchState.sort=s; renderWatchlist(); };
+window.setWatchCat = function(c) { watchState.cat=c; renderWatchlist(); };
 
 /* ── Market Analysis ── */
 function calcRarity(stats) {
-  const count = stats.offer_count || 0;
-  let volatility = 0;
-  if (stats.avg_price && stats.min_price!=null && stats.max_price!=null && stats.avg_price>0)
-    volatility = Math.round(((stats.max_price-stats.min_price)/stats.avg_price)*100);
-  let label, icon, cls, desc;
+  const count=stats.offer_count||0;
+  let volatility=0;
+  if (stats.avg_price&&stats.min_price!=null&&stats.max_price!=null&&stats.avg_price>0)
+    volatility=Math.round(((stats.max_price-stats.min_price)/stats.avg_price)*100);
+  let label,icon,cls,desc;
   if (count===0){label="Редкий товар";icon="💎";cls="rarity-rare";desc="Нет предложений на рынке";}
   else if (count>=20){label="Обычный товар";icon="📦";cls="rarity-common";desc="Много предложений · Стабильный рынок";}
-  else if (count>=5){label="Ограниченное предложение";icon="⚡";cls="rarity-limited";desc=volatility>45?"Мало предложений · Высокий разброс цен":"Мало предложений · Умеренный разброс";}
-  else{label="Редкий товар";icon="💎";cls="rarity-rare";desc="Очень мало предложений · Трудно найти";}
+  else if (count>=5){label="Ограниченное предложение";icon="⚡";cls="rarity-limited";desc=volatility>45?"Мало предложений · Высокий разброс":"Умеренный разброс";}
+  else{label="Редкий товар";icon="💎";cls="rarity-rare";desc="Очень мало предложений";}
   if (count>0&&count<8&&stats.avg_price&&stats.avg_price>5000){label="Высокая ценность";icon="🏆";cls="rarity-valuable";desc="Высокая цена + ограниченная доступность";}
   return {label,icon,cls,desc,volatility,count};
 }
@@ -402,7 +439,7 @@ function calcDealScore(stats) {
   return pos<=0.35?"cheap":pos<=0.65?"medium":"expensive";
 }
 function renderMarketAnalysis(stats) {
-  const rarity=calcRarity(stats), deal=calcDealScore(stats);
+  const rarity=calcRarity(stats),deal=calcDealScore(stats);
   const volColor=rarity.volatility>60?"#fc8181":rarity.volatility>30?"#ed8936":"#48bb78";
   const volWidth=Math.min(rarity.volatility,100);
   const dealHtml=deal?`<div class="metric-block"><div class="metric-label">Оценка цены</div>
@@ -433,7 +470,7 @@ function cmpAdd() {
   if (cmpItems.length>=3){alert("Максимум 3 позиции");return;}
   if (cmpItems.find(x=>x.query===state.query&&x.category===state.category)){alert("Уже добавлено");return;}
   cmpItems.push({query:state.query,category:state.category,market:state.marketData,compat:state.compatData});
-  updateCmpBadge(); renderTab();
+  updateCmpBadge();renderTab();
 }
 function cmpRemove(idx){cmpItems.splice(idx,1);updateCmpBadge();renderCmpContent();}
 function updateCmpBadge(){
@@ -452,12 +489,10 @@ function renderCmpContent() {
     {key:"head",render:(it,i)=>`<div class="cmp-cell head"><div><div style="font-size:.8rem;color:var(--dim)">${CAT_ICONS[it.category]||""} ${esc(it.category)}</div><div>${esc(it.query)}</div></div><button class="cmp-add-btn" onclick="cmpRemove(${i})">✕</button></div>`},
     {label:"Средняя цена",render:(it)=>{const p=it.market?.stats?.avg_price,best=p&&p===minP;return `<div class="cmp-cell${best?" cmp-best":""}"><div class="cmp-price">${p?p.toLocaleString("ru-RU")+" ₽":"—"}</div>${best?`<div style="font-size:.72rem;color:var(--success)">✅ Лучшая цена</div>`:""}</div>`;}},
     {label:"Диапазон цен",render:(it)=>{const s=it.market?.stats||{};return `<div class="cmp-cell">${s.min_price!=null?`от ${s.min_price.toLocaleString("ru-RU")} до ${s.max_price.toLocaleString("ru-RU")} ₽`:"—"}</div>`;}},
-    {label:"Новый / Б.У.",render:(it)=>{const s=it.market?.stats||{};return `<div class="cmp-cell">${s.new_count>0?`<div style="color:var(--success)">✅ ${s.new_avg?s.new_avg.toLocaleString("ru-RU")+" ₽":"есть"} (${s.new_count})</div>`:""}${s.used_count>0?`<div style="color:var(--warning)">🔄 ${s.used_avg?s.used_avg.toLocaleString("ru-RU")+" ₽":"есть"} (${s.used_count})</div>`:""}${!s.new_count&&!s.used_count?"—":""}</div>`;}},
     {label:"Предложений",render:(it)=>`<div class="cmp-cell">${it.market?.stats?.offer_count||0} шт</div>`},
     {label:"Популярность",render:(it)=>`<div class="cmp-cell">${it.market?.stats?.popularity||"—"}</div>`},
     {label:"Форма",render:(it)=>`<div class="cmp-cell">${esc(it.compat?.parsed?.shape||"—")}</div>`},
     {label:"Применение",render:(it)=>{const apps=it.compat?.applications||[];return `<div class="cmp-cell">${apps.length?apps.map(a=>`<span class="app-tag" style="margin:2px;font-size:.73rem">${esc(a)}</span>`).join(""):"—"}</div>`;}},
-    {label:"Бренды",render:(it)=>{const brands=(it.compat?.compatible_holders_by_brand||[]).map(b=>b.brand);return `<div class="cmp-cell">${brands.length?esc(brands.slice(0,4).join(", ")):"—"}</div>`;}},
   ];
   let html=`<div class="cmp-grid" style="grid-template-columns:repeat(${cmpItems.length},1fr)">`;
   rows.forEach(row=>{
@@ -565,205 +600,143 @@ function renderTab(){
 function renderMarketEmpty(){$("#tab-market").innerHTML=empty("🔍","Выберите категорию и введите название инструмента");}
 
 /* ══ MARKET ══ */
-function renderMarket() {
-  const p = $("#tab-market");
-  if (state.loading) { p.innerHTML = loader(); return; }
-  if (!state.marketData) { p.innerHTML = empty("🔍", "Введите запрос"); return; }
+function renderMarket(){
+  const p=$("#tab-market");
+  if (state.loading){p.innerHTML=loader();return;}
+  if (!state.marketData){p.innerHTML=empty("🔍","Введите запрос");return;}
+  const d=state.marketData,s=d.stats||{},ms=d.market_summary||{},sources=d.specialist_sources||[];
+  let html="";
 
-  const d = state.marketData;
-  const s = d.stats || {};
-  const ms = d.market_summary || {};
-  const sources = d.specialist_sources || [];
-  let html = "";
-
-  // Кнопки действий
-  const alreadyInCmp = cmpItems.find(x => x.query === state.query && x.category === state.category);
-  const watched = isWatched(state.query);
-  html += `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn ${alreadyInCmp ? "btn-secondary" : "btn-primary"}" onclick="cmpAdd()" ${alreadyInCmp ? "disabled" : ""}>
-      ${alreadyInCmp ? "✅ Добавлено" : "⚖️ Сравнить"}
+  const alreadyInCmp=cmpItems.find(x=>x.query===state.query&&x.category===state.category);
+  const watched=isWatched(state.query);
+  html+=`<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn ${alreadyInCmp?"btn-secondary":"btn-primary"}" onclick="cmpAdd()" ${alreadyInCmp?"disabled":""}>
+      ${alreadyInCmp?"✅ Добавлено":"⚖️ Сравнить"}
     </button>
-    <button class="btn btn-secondary" onclick="toggleWatch()" style="${watched ? "border-color:var(--accent);color:var(--accent)" : ""}">
-      ${watched ? "⭐ Отслеживается" : "☆ Отслеживать"}
+    <button class="btn btn-secondary" onclick="toggleWatch()" style="${watched?"border-color:var(--accent);color:var(--accent)":""}">
+      ${watched?"⭐ Отслеживается":"☆ Отслеживать"}
     </button>
-    ${cmpItems.length > 1 ? `<button class="btn btn-secondary" onclick="openCompare()">Сравнение (${cmpItems.length})</button>` : ""}
+    ${cmpItems.length>1?`<button class="btn btn-secondary" onclick="openCompare()">Сравнение (${cmpItems.length})</button>`:""}
   </div>`;
 
-  // 5 основных кликабельных площадок
-  const q = encodeURIComponent(state.query);
-  const mainMarkets = [
-    { label: "Авито",          color: "#00aaff", text: "#fff", url: `https://www.avito.ru/rossiya?q=${q}` },
-    { label: "Яндекс Маркет", color: "#ffcc00", text: "#000", url: `https://market.yandex.ru/search?text=${q}` },
-    { label: "Ozon",           color: "#005bff", text: "#fff", url: `https://www.ozon.ru/search/?text=${q}&from_global=true` },
-    { label: "Wildberries",    color: "#cb11ab", text: "#fff", url: `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}` },
-    { label: "ВсеИнструменты",color: "#e8380d", text: "#fff", url: `https://www.vseinstrumenti.ru/search/?q=${q}` },
+  const q=encodeURIComponent(state.query);
+  const mainMarkets=[
+    {label:"Авито",color:"#00aaff",text:"#fff",url:`https://www.avito.ru/rossiya?q=${q}`},
+    {label:"Яндекс Маркет",color:"#ffcc00",text:"#000",url:`https://market.yandex.ru/search?text=${q}`},
+    {label:"Ozon",color:"#005bff",text:"#fff",url:`https://www.ozon.ru/search/?text=${q}&from_global=true`},
+    {label:"Wildberries",color:"#cb11ab",text:"#fff",url:`https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`},
+    {label:"ВсеИнструменты",color:"#e8380d",text:"#fff",url:`https://www.vseinstrumenti.ru/search/?q=${q}`},
   ];
-  html += `<div class="marketplace-section">
+  html+=`<div class="marketplace-section">
     <div class="marketplace-label">🔗 Найти на площадках</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-      ${mainMarkets.map(m => `<a href="${esc(m.url)}" target="_blank" rel="noopener" class="market-btn" style="background:${m.color};color:${m.text};font-size:.82rem;padding:8px 14px">${esc(m.label)}</a>`).join("")}
+      ${mainMarkets.map(m=>`<a href="${esc(m.url)}" target="_blank" rel="noopener" class="market-btn" style="background:${m.color};color:${m.text};font-size:.82rem;padding:8px 14px">${esc(m.label)}</a>`).join("")}
     </div>
   </div>`;
 
-  if (d.is_estimate) html += `<div class="alert alert-info">📊 Показана <strong>рыночная оценка</strong> на основе базы данных. Нажмите на площадку выше для актуальных цен.</div>`;
+  if (d.is_estimate) html+=`<div class="alert alert-info">📊 Показана <strong>рыночная оценка</strong>. Для актуальных цен используйте ссылки выше.</div>`;
 
-  html += `<div class="section-header">
-    <span class="section-title">${CAT_ICONS[state.category] || ""} "${esc(state.query)}"</span>
-    <span class="source-badge">${esc(d.source || "—")} · ${d.timestamp || ""}${d.from_cache ? ' · <span style="color:var(--warning)">кэш</span>' : ""}</span>
+  html+=`<div class="section-header">
+    <span class="section-title">${CAT_ICONS[state.category]||""} "${esc(state.query)}"</span>
+    <span class="source-badge">${esc(d.source||"—")} · ${d.timestamp||""}${d.from_cache?' · <span style="color:var(--warning)">кэш</span>':""}</span>
   </div>`;
 
-  // Основные статы
-  html += `<div class="stats-row">
-    <div class="stat-card">
-      <div class="label">Средняя цена</div>
-      <div class="value green">${fmt(s.avg_price)}</div>
-      ${s.min_price != null ? `<div style="font-size:.72rem;color:var(--dim);margin-top:3px">Мин: ${fmt(s.min_price)} · Макс: ${fmt(s.max_price)}</div>` : ""}
+  html+=`<div class="stats-row">
+    <div class="stat-card"><div class="label">Средняя цена</div><div class="value green">${fmt(s.avg_price)}</div>
+      ${s.min_price!=null?`<div style="font-size:.72rem;color:var(--dim);margin-top:3px">Мин: ${fmt(s.min_price)} · Макс: ${fmt(s.max_price)}</div>`:""}
     </div>
-    <div class="stat-card">
-      <div class="label">Предложений</div>
-      <div class="value blue">${ms.total_offers || s.offer_count || 0}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Популярность</div>
-      <div class="value orange">${s.popularity || "—"}</div>
-      <div class="pop-bar">${[1,2,3,4,5].map(i => `<div class="pop-dot${i <= (s.popularity_level || 0) ? " filled" : ""}"></div>`).join("")}</div>
+    <div class="stat-card"><div class="label">Предложений</div><div class="value blue">${ms.total_offers||s.offer_count||0}</div></div>
+    <div class="stat-card"><div class="label">Популярность</div><div class="value orange">${s.popularity||"—"}</div>
+      <div class="pop-bar">${[1,2,3,4,5].map(i=>`<div class="pop-dot${i<=(s.popularity_level||0)?" filled":""}"></div>`).join("")}</div>
     </div>
   </div>`;
 
-  // Анализ рынка
-  if (s.offer_count !== undefined) html += renderMarketAnalysis(s);
+  if (s.offer_count!==undefined) html+=renderMarketAnalysis(s);
 
-  // ── Вывод по рынку ──
   if (ms.market_avg) {
-    const spreadColor = ms.spread_pct > 50 ? "#fc8181" : ms.spread_pct > 25 ? "#ed8936" : "#48bb78";
-    const rarityIcon = ms.rarity === "Редкий товар" ? "💎" : ms.rarity === "Ограниченное предложение" ? "⚡" : ms.rarity === "Умеренное предложение" ? "📦" : "✅";
-    html += `<div class="market-analysis" style="margin-top:16px">
+    const spreadColor=ms.spread_pct>50?"#fc8181":ms.spread_pct>25?"#ed8936":"#48bb78";
+    const rarityIcon=ms.rarity==="Редкий товар"?"💎":ms.rarity==="Ограниченное предложение"?"⚡":ms.rarity==="Умеренное предложение"?"📦":"✅";
+    html+=`<div class="market-analysis" style="margin-top:16px">
       <div class="analysis-header">
         <div class="analysis-title">📋 Вывод по рынку</div>
         <div class="rarity-badge rarity-limited">${rarityIcon} ${esc(ms.rarity)}</div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
         <div style="background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--border)">
-          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Минимум по рынку</div>
+          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Минимум</div>
           <div style="font-weight:700;color:#48bb78;font-size:1rem">${fmt(ms.market_min)}</div>
         </div>
         <div style="background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--border)">
-          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Средняя по рынку</div>
+          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Средняя</div>
           <div style="font-weight:700;color:var(--accent);font-size:1rem">${fmt(ms.market_avg)}</div>
         </div>
         <div style="background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--border)">
-          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Максимум по рынку</div>
+          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Максимум</div>
           <div style="font-weight:700;color:#fc8181;font-size:1rem">${fmt(ms.market_max)}</div>
         </div>
         <div style="background:var(--bg);border-radius:8px;padding:10px;border:1px solid var(--border)">
           <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px">Выгодная цена</div>
-          <div style="font-weight:700;color:#48bb78;font-size:.9rem">${ms.good_min && ms.good_max ? `${fmt(ms.good_min)} – ${fmt(ms.good_max)}` : "—"}</div>
+          <div style="font-weight:700;color:#48bb78;font-size:.9rem">${ms.good_min&&ms.good_max?`${fmt(ms.good_min)} – ${fmt(ms.good_max)}`:"—"}</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="font-size:.78rem;color:var(--dim)">Разброс цен: <span style="color:${spreadColor};font-weight:600">${ms.spread_pct}% · ${esc(ms.spread_label)}</span></div>
-      </div>
+      <div style="font-size:.78rem;color:var(--dim)">Разброс: <span style="color:${spreadColor};font-weight:600">${ms.spread_pct}% · ${esc(ms.spread_label)}</span></div>
     </div>`;
   }
 
-  // ── Дополнительные источники ──
   if (sources.length) {
-    html += `<div style="margin-top:20px">
-      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">📦 Дополнительные источники рынка</div>
+    html+=`<div style="margin-top:20px">
+      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">📦 Цены по источникам</div>
       <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">`;
-
-    sources.forEach((src, i) => {
-      const isLast = i === sources.length - 1;
-      const borderBottom = isLast ? "" : "border-bottom:1px solid var(--border)";
-      if (src.status === "no_data") {
-        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${borderBottom}">
-          <div>
-            <span style="font-weight:600;font-size:.85rem">${esc(src.name)}</span>
-            <span style="font-size:.72rem;color:var(--dim);margin-left:8px;background:var(--bg);padding:2px 6px;border-radius:4px">${esc(src.type)}</span>
-          </div>
+    sources.forEach((src,i)=>{
+      const isLast=i===sources.length-1;
+      const bb=isLast?"":"border-bottom:1px solid var(--border)";
+      if (src.status==="no_data") {
+        html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${bb}">
+          <div><span style="font-weight:600;font-size:.85rem">${esc(src.name)}</span>
+          <span style="font-size:.72rem;color:var(--dim);margin-left:8px;background:var(--bg);padding:2px 6px;border-radius:4px">${esc(src.type)}</span></div>
           <div style="font-size:.75rem;color:var(--dim);font-style:italic">данных недостаточно</div>
         </div>`;
       } else {
-        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${borderBottom};flex-wrap:wrap;gap:6px">
-          <div>
-            <span style="font-weight:600;font-size:.85rem">${esc(src.name)}</span>
-            <span style="font-size:.72rem;color:var(--dim);margin-left:8px;background:var(--bg);padding:2px 6px;border-radius:4px">${esc(src.type)}</span>
-          </div>
-          <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-            <div style="text-align:center">
-              <div style="font-size:.68rem;color:var(--dim)">мин</div>
-              <div style="font-size:.82rem;color:#48bb78;font-weight:600">${fmt(src.min_price)}</div>
-            </div>
-            <div style="text-align:center">
-              <div style="font-size:.68rem;color:var(--dim)">средняя</div>
-              <div style="font-size:.82rem;color:var(--accent);font-weight:700">${fmt(src.avg_price)}</div>
-            </div>
-            <div style="text-align:center">
-              <div style="font-size:.68rem;color:var(--dim)">макс</div>
-              <div style="font-size:.82rem;color:#fc8181;font-weight:600">${fmt(src.max_price)}</div>
-            </div>
-            <div style="text-align:center">
-              <div style="font-size:.68rem;color:var(--dim)">предл.</div>
-              <div style="font-size:.82rem;font-weight:600">${src.count} шт</div>
-            </div>
+        html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;${bb};flex-wrap:wrap;gap:6px">
+          <div><span style="font-weight:600;font-size:.85rem">${esc(src.name)}</span>
+          <span style="font-size:.72rem;color:var(--dim);margin-left:8px;background:var(--bg);padding:2px 6px;border-radius:4px">${esc(src.type)}</span></div>
+          <div style="display:flex;gap:14px;align-items:center">
+            <div style="text-align:center"><div style="font-size:.65rem;color:var(--dim)">мин</div><div style="font-size:.82rem;color:#48bb78;font-weight:600">${fmt(src.min_price)}</div></div>
+            <div style="text-align:center"><div style="font-size:.65rem;color:var(--dim)">средняя</div><div style="font-size:.9rem;color:var(--accent);font-weight:700">${fmt(src.avg_price)}</div></div>
+            <div style="text-align:center"><div style="font-size:.65rem;color:var(--dim)">макс</div><div style="font-size:.82rem;color:#fc8181;font-weight:600">${fmt(src.max_price)}</div></div>
+            <div style="text-align:center"><div style="font-size:.65rem;color:var(--dim)">предл.</div><div style="font-size:.82rem;font-weight:600">${src.count} шт</div></div>
           </div>
         </div>`;
       }
     });
-    html += `</div>
-      <div style="font-size:.7rem;color:var(--dim);margin-top:6px">* Источник учтён только в аналитике — прямой переход не гарантирует результат</div>
-    </div>`;
+    html+=`</div></div>`;
   }
 
-  // Новый/Б.У.
-  if (s.new_count > 0 || s.used_count > 0) {
-    html += `<div class="price-split" style="margin-top:16px">
-      <div class="price-box new-box">
-        <div class="pb-label">✅ Новый (${s.new_count || 0} шт)</div>
-        <div class="pb-val">${fmt(s.new_avg)}</div>
-        ${s.new_min != null ? `<div class="pb-range">от ${fmt(s.new_min)} до ${fmt(s.new_max)}</div>` : ""}
-      </div>
-      <div class="price-box used-box">
-        <div class="pb-label">🔄 Б/У (${s.used_count || 0} шт)</div>
-        <div class="pb-val">${fmt(s.used_avg)}</div>
-        ${s.used_min != null ? `<div class="pb-range">от ${fmt(s.used_min)} до ${fmt(s.used_max)}</div>` : ""}
-      </div>
-    </div>`;
-  }
-
-  // Листинги по брендам
   if (d.listings?.length) {
-    const hasPrice = d.listings.some(x => x.price);
-    if (hasPrice) {
-      html += `<div style="margin-top:16px">
-        <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">🏆 Оценка по брендам</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-          <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('asc')">↑ Дешевле</button>
-          <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('desc')">↓ Дороже</button>
-        </div>
-      </div>`;
-    }
-    html += `<div class="listings-grid" id="listings-grid">`;
-    d.listings.forEach(item => {
-      const condCls = COND_CLS[item.condition] || "cond-unknown";
-      const condLabel = COND_LABEL[item.condition] || "—";
-      const placeholder = `<div class="listing-img-placeholder">${CAT_ICONS[state.category] || "🔧"}</div>`;
-      html += `<a class="listing-card" href="${esc(item.url || "#")}" target="_blank" rel="noopener">
-        ${placeholder}
+    html+=`<div style="margin-top:20px">
+      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">🏆 Оценка по брендам</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('asc')">↑ Дешевле</button>
+        <button class="btn btn-secondary" style="padding:5px 14px;font-size:.78rem" onclick="sortListings('desc')">↓ Дороже</button>
+      </div>
+    </div>
+    <div class="listings-grid" id="listings-grid">`;
+    d.listings.forEach(item=>{
+      const condCls=COND_CLS[item.condition]||"cond-unknown",condLabel=COND_LABEL[item.condition]||"—";
+      html+=`<a class="listing-card" href="${esc(item.url||"#")}" target="_blank" rel="noopener">
+        <div class="listing-img-placeholder">${CAT_ICONS[state.category]||"🔧"}</div>
         <div class="listing-body">
           <div class="listing-title">${esc(item.title)}</div>
-          <div class="${item.price ? "listing-price" : "listing-price no-price"}">${item.price ? fmt(item.price) : esc(item.price_text)}</div>
-          <div class="listing-meta">
-            <span class="cond-badge ${condCls}">${condLabel}</span>
-            ${item.location ? `<span class="listing-loc">📍 ${esc(item.location)}</span>` : ""}
+          <div class="listing-price">${fmt(item.price)}</div>
+          <div class="listing-meta"><span class="cond-badge ${condCls}">${condLabel}</span>
+            ${item.location?`<span class="listing-loc">📍 ${esc(item.location)}</span>`:""}
           </div>
         </div>
       </a>`;
     });
-    html += `</div>`;
+    html+=`</div>`;
   }
-
-  p.innerHTML = html;
+  p.innerHTML=html;
 }
 
 /* ══ COMPAT ══ */
@@ -794,11 +767,6 @@ function renderCompat(){
     });
     html+=`</div>`;
   }
-  if (d.positive_variants?.length||d.negative_variants?.length)
-    html+=`<div class="card" style="margin-top:12px"><div class="card-title">ISO варианты</div>
-      <div style="margin-bottom:6px"><span style="font-size:.75rem;color:var(--muted)">Позитивные: </span>${(d.positive_variants||[]).map(i=>`<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
-      <div><span style="font-size:.75rem;color:var(--muted)">Негативные: </span>${(d.negative_variants||[]).map(i=>`<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
-    </div>`;
   p.innerHTML=html;
 }
 
@@ -897,4 +865,9 @@ window.sortListings=function(dir){
   state.marketData={...state.marketData,listings:sorted};renderMarket();
 };
 
-document.addEventListener("DOMContentLoaded",()=>{init();setupCalc();renderHistory();});
+document.addEventListener("DOMContentLoaded",()=>{
+  init();setupCalc();renderHistory();
+  const params=new URLSearchParams(window.location.search);
+  const resetToken=params.get("token");
+  if (resetToken) showResetForm(resetToken);
+});

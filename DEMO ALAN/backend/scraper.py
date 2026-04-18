@@ -1,6 +1,7 @@
+import re
 import time
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from urllib.parse import quote_plus
 
 CACHE: Dict[str, Dict] = {}
@@ -39,35 +40,73 @@ BRANDS = [
     ("Sandvik Coromant", 1.80),
 ]
 
-# Специализированные площадки — полный запрос с артикулом и модификатором
 SPECIALIST_MARKETS = [
-    ("ВсеИнструменты",   "https://www.vseinstrumenti.ru/search/?q="),
-    ("Pulscen.ru",        "https://pulscen.ru/search?query="),
-    ("Tiu.ru",            "https://tiu.ru/search?search[text]="),
-    ("Tooling.ru",        "https://www.tooling.ru/search?q="),
-    ("МиринСтрумента",    "https://mirinstrumenta.ru/search/?q="),
-    ("ПрофИнструмент",    "https://profiinstrument.ru/search/?q="),
-    ("Ingol.ru",          "https://ingol.ru/search/?q="),
-    ("B2B-Center",        "https://www.b2b-center.ru/market/search.html?q="),
-    ("Satist.ru",         "https://satist.ru/search/?q="),
-    ("Sandvik Coromant",  "https://www.sandvik.coromant.com/ru-ru/search#q="),
-    ("Iscar",             "https://www.iscar.com/eCatalog/item.aspx/lang/RU/Fnum/1?q="),
+    ("ВсеИнструменты",  "https://www.vseinstrumenti.ru/search/?q=",          "full"),
+    ("Pulscen.ru",       "https://pulscen.ru/search?q=",                       "full"),
+    ("Tiu.ru",           "https://tiu.ru/search?search[text]=",                "full"),
+    ("Tooling.ru",       "https://www.tooling.ru/search?q=",                   "full"),
+    ("МиринСтрумента",   "https://mirinstrumenta.ru/search/?q=",               "code"),
+    ("ПрофИнструмент",   "https://profiinstrument.ru/search/?q=",              "code"),
+    ("Ingol.ru",         "https://ingol.ru/search/?q=",                        "code"),
+    ("B2B-Center",       "https://www.b2b-center.ru/market/search.html?q=",   "full"),
+    ("Satist.ru",        "https://satist.ru/search/?q=",                       "base"),
+    ("Sandvik Coromant", "https://www.sandvik.coromant.com/ru-ru/search#q=",  "full"),
+    ("Iscar",            "https://www.iscar.com/eCatalog/item.aspx/lang/RU/Fnum/1?q=", "base"),
 ]
 
-# Общие маркетплейсы — только базовый артикул (без -SM S05F)
 GENERAL_MARKETS = [
-    ("Авито",             "https://www.avito.ru/rossiya?q="),
-    ("Яндекс Маркет",     "https://market.yandex.ru/search?text="),
-    ("Ozon",              "https://www.ozon.ru/search/?text="),
-    ("Wildberries",       "https://www.wildberries.ru/catalog/0/search.aspx?search="),
-    ("Метро C&C",         "https://online.metro-cc.ru/search?in=&query="),
+    ("Авито",        "https://www.avito.ru/rossiya?q=",                          "base"),
+    ("Яндекс Маркет","https://market.yandex.ru/search?text=",                    "base"),
+    ("Ozon",         "https://www.ozon.ru/search/?text=",                        "base"),
+    ("Wildberries",  "https://www.wildberries.ru/catalog/0/search.aspx?search=", "base"),
+    ("Метро C&C",    "https://online.metro-cc.ru/search?in=&query=",             "base"),
 ]
 
 
-def _base_query(query: str) -> str:
-    # "CNMG120412-SM S05F" → "CNMG120412"
-    # "CNMG 120408" → "CNMG 120408"
-    return query.split("-")[0].strip()
+def parse_iso_code(query: str) -> Dict:
+    q = re.sub(r'\s+', ' ', query.strip().upper())
+    m = re.match(r'^([A-Z]{2,6})\s*(\d{4,8})(?:-([A-Z0-9]+))?\s*([A-Z0-9]+)?', q)
+    if m:
+        return {
+            "shape": m.group(1) or "",
+            "size":  m.group(2) or "",
+            "chipbreaker": m.group(3) or "",
+            "grade": m.group(4) or "",
+            "parsed": True,
+        }
+    return {"shape": "", "size": "", "chipbreaker": "", "grade": "", "parsed": False}
+
+
+def generate_variants(query: str) -> Dict[str, str]:
+    p = parse_iso_code(query)
+    sh, sz, cb, gr = p["shape"], p["size"], p["chipbreaker"], p["grade"]
+
+    if p["parsed"] and sh and sz:
+        full = sh + sz
+        if cb: full += "-" + cb
+        if gr: full += " " + gr
+
+        code = sh + sz
+        if cb: code += "-" + cb
+
+        base = sh + sz
+        base_s = sh + " " + sz
+
+        compact = sh + sz + cb + gr
+    else:
+        full = query.strip()
+        code = query.split("-")[0].strip()
+        base = code.split()[0] if " " in code else code
+        base_s = base
+        compact = re.sub(r'[\s\-]', '', query.upper())
+
+    return {
+        "full":    full,
+        "code":    code,
+        "base":    base,
+        "base_s":  base_s,
+        "compact": compact,
+    }
 
 
 class MarketScraper:
@@ -93,61 +132,62 @@ def _estimate_market(query: str, category: str) -> Dict:
     cat_prices = BASE_PRICES.get(category, BASE_PRICES["inserts"])
     first_char = tokens[0][0] if tokens else "C"
     base_range = cat_prices.get(first_char, cat_prices["default"])
-    lo = base_range[0]
-    hi = base_range[1]
+    lo, hi = base_range
 
-    full = " ".join(tokens)
-
-    size_m = 1.0
-    for sz in SIZE_MULT:
-        if sz in full:
-            size_m = SIZE_MULT[sz]
-            break
-
-    grade_m = 1.0
-    for grade in GRADE_MULT:
-        if grade in full:
-            grade_m = GRADE_MULT[grade]
-            break
-
+    full_str = " ".join(tokens)
+    size_m = next((SIZE_MULT[sz] for sz in SIZE_MULT if sz in full_str), 1.0)
+    grade_m = next((GRADE_MULT[g] for g in GRADE_MULT if g in full_str), 1.0)
     base_avg = int(round((lo + hi) / 2 * size_m * grade_m / 10) * 10)
 
-    q_full = quote_plus(query)
-    q_base = quote_plus(_base_query(query))
+    variants = generate_variants(query)
+    parsed = parse_iso_code(query)
 
     listings: List[Dict] = []
 
-    for market_name, base_url in SPECIALIST_MARKETS:
+    for market_name, base_url, var_key in SPECIALIST_MARKETS:
+        q_enc = quote_plus(variants.get(var_key, variants["full"]))
+        var_label = {"full": "полный артикул", "code": "артикул+стружколом", "base": "базовый артикул"}.get(var_key, "")
         listings.append({
             "title": "Найти на " + market_name,
             "price": None,
             "price_text": "Открыть поиск",
+            "match_type": "search",
+            "match_label": "Поиск: " + variants.get(var_key, variants["full"]),
+            "relevance": 0,
             "condition": "unknown",
             "image": "",
-            "url": base_url + q_full,
+            "url": base_url + q_enc,
             "location": market_name,
         })
 
-    for market_name, base_url in GENERAL_MARKETS:
+    for market_name, base_url, var_key in GENERAL_MARKETS:
+        q_enc = quote_plus(variants.get(var_key, variants["base"]))
         listings.append({
             "title": "Найти на " + market_name,
             "price": None,
             "price_text": "Открыть поиск",
+            "match_type": "search",
+            "match_label": "Поиск: " + variants.get(var_key, variants["base"]),
+            "relevance": 0,
             "condition": "unknown",
             "image": "",
-            "url": base_url + q_base,
+            "url": base_url + q_enc,
             "location": market_name,
         })
 
     for brand_name, brand_m in BRANDS:
         price = int(round(base_avg * brand_m / 10) * 10)
+        q_enc = quote_plus(variants["full"])
         listings.append({
             "title": query + " (" + brand_name + ")",
             "price": price,
             "price_text": str(price) + " \u20bd",
+            "match_type": "estimate",
+            "match_label": "Оценка рынка",
+            "relevance": 75,
             "condition": "new",
             "image": "",
-            "url": "https://www.vseinstrumenti.ru/search/?q=" + q_full,
+            "url": "https://www.vseinstrumenti.ru/search/?q=" + q_enc,
             "location": brand_name,
         })
 
@@ -173,6 +213,8 @@ def _estimate_market(query: str, category: str) -> Dict:
 
     return {
         "query": query,
+        "variants": variants,
+        "parsed": parsed,
         "listings": listings,
         "stats": stats,
         "source": "Рыночная оценка",

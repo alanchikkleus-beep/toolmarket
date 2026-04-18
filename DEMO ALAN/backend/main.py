@@ -1,79 +1,123 @@
 import os
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Query, Request, Response, Cookie
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+import backend.scraper as scraper
+import backend.compatibility as compatibility
+import backend.auth as auth
 
-from scraper import MarketScraper
-from compatibility import CompatibilityDB
+auth.init_db()
 
-app = FastAPI(title="ToolMarket Monitor", version="2.0.0")
+app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-scraper = MarketScraper()
-compat = CompatibilityDB()
-
 FRONTEND = os.path.join(os.path.dirname(__file__), "..", "frontend")
+app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
+@app.get("/")
+async def root(): return FileResponse(os.path.join(FRONTEND, "index.html"))
 
-@app.get("/api/ping")
-async def ping():
-    return {"status": "ok"}
+@app.get("/style.css")
+async def css(): return FileResponse(os.path.join(FRONTEND, "style.css"))
 
+@app.get("/app.js")
+async def js(): return FileResponse(os.path.join(FRONTEND, "app.js"))
+
+@app.get("/favicon.ico")
+async def favicon(): return FileResponse(os.path.join(FRONTEND, "favicon.ico"))
+
+# ── Auth endpoints ──
+
+class AuthBody(BaseModel):
+    email: str
+    password: str
+
+@app.post("/api/auth/register")
+async def register(body: AuthBody, response: Response):
+    result = auth.create_user(body.email, body.password)
+    if result["ok"]:
+        login = auth.login_user(body.email, body.password)
+        response.set_cookie("session", login["token"], max_age=30*24*3600, httponly=True, samesite="lax")
+        return {"ok": True, "email": body.email}
+    return JSONResponse(status_code=400, content=result)
+
+@app.post("/api/auth/login")
+async def login(body: AuthBody, response: Response):
+    result = auth.login_user(body.email, body.password)
+    if result["ok"]:
+        response.set_cookie("session", result["token"], max_age=30*24*3600, httponly=True, samesite="lax")
+        return {"ok": True, "email": result["email"]}
+    return JSONResponse(status_code=401, content=result)
+
+@app.post("/api/auth/logout")
+async def logout(response: Response, session: Optional[str] = Cookie(None)):
+    if session: auth.logout_user(session)
+    response.delete_cookie("session")
+    return {"ok": True}
+
+@app.get("/api/auth/me")
+async def me(session: Optional[str] = Cookie(None)):
+    user = auth.get_user_by_token(session)
+    if not user: return JSONResponse(status_code=401, content={"ok": False})
+    return {"ok": True, "email": user["email"], "id": user["id"]}
+
+# ── Watchlist endpoints ──
+
+class WatchBody(BaseModel):
+    query: str
+    category: str
+    price: Optional[float] = None
+
+@app.get("/api/watchlist")
+async def get_watchlist(session: Optional[str] = Cookie(None)):
+    user = auth.get_user_by_token(session)
+    if not user: return JSONResponse(status_code=401, content={"ok": False})
+    return auth.get_watchlist(user["id"])
+
+@app.post("/api/watchlist")
+async def add_watchlist(body: WatchBody, session: Optional[str] = Cookie(None)):
+    user = auth.get_user_by_token(session)
+    if not user: return JSONResponse(status_code=401, content={"ok": False})
+    if body.price: auth.add_price_history(user["id"], body.query, body.category, body.price)
+    return auth.add_to_watchlist(user["id"], body.query, body.category, body.price)
+
+@app.delete("/api/watchlist")
+async def remove_watchlist(body: WatchBody, session: Optional[str] = Cookie(None)):
+    user = auth.get_user_by_token(session)
+    if not user: return JSONResponse(status_code=401, content={"ok": False})
+    return auth.remove_from_watchlist(user["id"], body.query, body.category)
+
+@app.get("/api/watchlist/history")
+async def price_history(q: str, category: str, session: Optional[str] = Cookie(None)):
+    user = auth.get_user_by_token(session)
+    if not user: return JSONResponse(status_code=401, content={"ok": False})
+    return auth.get_price_history(user["id"], q, category)
+
+# ── Market endpoints ──
 
 @app.get("/api/market")
-async def market(
-    q: str = Query(...),
-    category: str = Query("inserts"),
-    limit: int = Query(24, ge=1, le=50),
-):
+async def market(q: str = Query(...), category: str = Query("inserts"), limit: int = Query(24, ge=1, le=50)):
     return await scraper.search(q, category, limit)
 
-
 @app.get("/api/compatibility/{insert_code}")
-async def get_compat(insert_code: str):
-    r = compat.get_compatibility(insert_code)
-    if "error" in r:
-        raise HTTPException(400, r["error"])
-    return r
-
-
-@app.get("/api/holders")
-async def get_holders():
-    return compat.get_holders()
-
+async def compat(insert_code: str):
+    return compatibility.get_compatibility(insert_code)
 
 @app.get("/api/insert-types")
-async def get_insert_types():
-    return compat.get_insert_types()
+async def insert_types():
+    return compatibility.get_insert_types()
 
+@app.get("/api/holders")
+async def holders():
+    return compatibility.get_all_holders()
 
 @app.get("/api/categories")
-async def get_categories():
-    return compat.get_categories()
-
+async def categories():
+    return compatibility.get_categories()
 
 @app.get("/api/search-by-holder")
 async def search_by_holder(prefix: str = Query(...)):
-    return compat.search_by_holder(prefix)
-
-
-if os.path.isdir(FRONTEND):
-    app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
-
-    @app.get("/")
-    async def index():
-        return FileResponse(os.path.join(FRONTEND, "index.html"))
-
-    @app.get("/{path:path}")
-    async def spa(path: str):
-        fp = os.path.join(FRONTEND, path)
-        if os.path.isfile(fp):
-            return FileResponse(fp)
-        return FileResponse(os.path.join(FRONTEND, "index.html"))
-
-
-if __name__ == "__main__":
-    import uvicorn, os
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    return compatibility.search_by_holder(prefix)

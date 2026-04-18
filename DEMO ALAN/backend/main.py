@@ -5,9 +5,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import backend.scraper as scraper
-import backend.compatibility as compatibility
-import backend.auth as auth
+import scraper
+import compatibility
+import auth
 
 auth.init_db()
 
@@ -28,8 +28,6 @@ async def js(): return FileResponse(os.path.join(FRONTEND, "app.js"))
 
 @app.get("/favicon.ico")
 async def favicon(): return FileResponse(os.path.join(FRONTEND, "favicon.ico"))
-
-# ── Auth endpoints ──
 
 class AuthBody(BaseModel):
     email: str
@@ -64,8 +62,6 @@ async def me(session: Optional[str] = Cookie(None)):
     if not user: return JSONResponse(status_code=401, content={"ok": False})
     return {"ok": True, "email": user["email"], "id": user["id"]}
 
-# ── Watchlist endpoints ──
-
 class WatchBody(BaseModel):
     query: str
     category: str
@@ -95,8 +91,6 @@ async def price_history(q: str, category: str, session: Optional[str] = Cookie(N
     user = auth.get_user_by_token(session)
     if not user: return JSONResponse(status_code=401, content={"ok": False})
     return auth.get_price_history(user["id"], q, category)
-
-# ── Market endpoints ──
 
 @app.get("/api/market")
 async def market(q: str = Query(...), category: str = Query("inserts"), limit: int = Query(24, ge=1, le=50)):

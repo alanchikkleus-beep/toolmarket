@@ -617,6 +617,31 @@ function renderMarket() {
     </div>`;
   }
 
+  // Таблица цен по источникам
+  if (d.specialist_sources?.length) {
+    html += `<div class="section-title" style="margin:18px 0 10px">📊 Цены по источникам <span style="font-size:.75rem;color:var(--muted);font-weight:400">— от дешевле к дороже</span></div>
+    <div style="overflow-x:auto;margin-bottom:18px">
+    <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      <thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Источник</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Тип</th>
+        <th style="text-align:right;padding:6px 10px;border-bottom:1px solid var(--border)">Мин</th>
+        <th style="text-align:right;padding:6px 10px;border-bottom:1px solid var(--border)">Средняя</th>
+        <th style="text-align:right;padding:6px 10px;border-bottom:1px solid var(--border)">Макс</th>
+      </tr></thead><tbody>`;
+    d.specialist_sources.forEach((src, i) => {
+      const bg = i % 2 === 0 ? "background:rgba(255,255,255,.02)" : "";
+      html += `<tr style="${bg};cursor:pointer" onclick="window.open('${esc(src.url)}','_blank')">
+        <td style="padding:7px 10px;font-weight:600;color:var(--accent)">${esc(src.name)}</td>
+        <td style="padding:7px 10px;color:var(--muted)">${esc(src.type)}</td>
+        <td style="padding:7px 10px;text-align:right;color:var(--success)">${fmt(src.min_price)}</td>
+        <td style="padding:7px 10px;text-align:right;font-weight:700">${fmt(src.avg_price)}</td>
+        <td style="padding:7px 10px;text-align:right;color:#fc8181">${fmt(src.max_price)}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
   // Sort controls
   if (d.listings?.length) {
     const hasPrice = d.listings.some(x => x.price);

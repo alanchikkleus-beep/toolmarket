@@ -193,42 +193,51 @@ const CAT_LABELS = {
 function detectCategory(query) {
   const q = query.toUpperCase().replace(/-/g, " ");
 
+  // ISO insert: 4 letters + 4+ digits (CNMG 120408, WNMG080408)
   if (/^[A-Z]{4}\s*\d{4}/.test(q) ||
       /\b(CNMG|WNMG|SNMG|DNMG|CCMT|DCMT|TCMT|RCMT|VCMT|SCMT|TNMG|APMT|SEKT|XOMT|LNUX|RPMT|SPMT|PNMU|ONMU|CCGX|TCGX|DCGX)\b/.test(q)) {
     return { cat: "inserts", label: "Пластины", confidence: "high" };
   }
 
+  // ISO turning holder: 5-6 uppercase letters + size digits (PCLNR 2525M12)
   if (/^(PCLNR|PCLNL|SCLCR|SCLCL|SVJCR|SVJBL|DCLNR|DCLNL|MWLNR|PTGNR|PTGNL|MTJNR|MTJNL|MCLNR|MCLNL|MVJNR|SDUCR|SDUCL|SRGCR|CSRNR)\b/.test(q) ||
       /\b(ДЕРЖАВ[КИ]|РЕЗЦЕДЕРЖАТЕЛЬ|TOOLHOLDER|TURNING\s+HOLDER)\b/.test(q)) {
     return { cat: "toolholders", label: "Державки", confidence: "high" };
   }
 
+  // Measuring instruments
   if (/\b(ШТАНГЕНЦИРКУЛЬ|МИКРОМЕТР|НУТРОМЕР|ГЛУБИНОМЕР|ИНДИКАТОР\s+ЧАС|КАЛИБР|ШАБЛОН|CALIPER|MICROMETER|GAUGE|GAGE|НУТРОМ|РУЛЕТК|ЛИНЕЙК|УГЛОМЕР|ПРОФИЛОМЕТР)\b/.test(q)) {
     return { cat: "measuring", label: "Измерительный", confidence: "high" };
   }
 
+  // Threading tools
   if (/\b(МЕТЧИК|ПЛАШКА|ПЛАШКИ|РЕЗЬБОНАРЕЗ|TAP\b|DIE\b|THREADING|РЕЗЬБОФРЕЗ|ГРЕБЁНК)\b/.test(q) ||
       /[МM]\d+\s*[Х×X]\s*[\d.]/.test(q)) {
     return { cat: "threading", label: "Резьбонарезной", confidence: "high" };
   }
 
+  // Tooling / оснастка
   if (/\b(ОСНАСТК|ПАТРОН|ЦАНГ[АИ]|ОПРАВК[АИ]|ПЕРЕХОДНИК|АДАПТЕР|CHUCK|COLLET|ARBOR|MANDREL|HSK|BT\d|CAT\d)\b/.test(q) ||
       /\bER\s?\d{2}\b/.test(q)) {
     return { cat: "tooling", label: "Оснастка", confidence: "high" };
   }
 
+  // Drills
   if (/\b(СВЕРЛ|DRILL|R840|R845|SDS|HSS|HSSE|СПИРАЛЬ)\b/.test(q)) {
     return { cat: "drills", label: "Сверла", confidence: "high" };
   }
 
+  // Mills
   if (/\b(ФРЕЗ|MILL|R390|R245|COROMILL|ENDMILL|ТОРЦЕВ\w+\s+ФРЕЗ|КОНЦЕВ\w+\s+ФРЕЗ|ШПОНОЧ)\b/.test(q)) {
     return { cat: "mills", label: "Фрезы", confidence: "high" };
   }
 
+  // Burrs
   if (/\b(БОРФРЕЗ|BURR|ШАРОШК)\b/.test(q)) {
     return { cat: "burrs", label: "Борфрезы", confidence: "high" };
   }
 
+  // Reamers
   if (/\b(РАЗВЕРТ|REAMER)\b/.test(q)) {
     return { cat: "reamers", label: "Развертки", confidence: "high" };
   }
@@ -266,7 +275,6 @@ window.resetCategoryAuto = function() {
   $$(".cat-btn").forEach(b => b.classList.remove("active"));
   renderCategoryIndicator(null);
 };
-
 const COND_LABEL = { new: "Новый", used: "Б/У", unknown: "—" };
 const COND_CLS = { new: "cond-new", used: "cond-used", unknown: "cond-unknown" };
 
@@ -284,12 +292,14 @@ async function api(path) {
 }
 
 async function init() {
+  // Сразу настраиваем UI — не ждём сервер
   setupCategoryBar();
   setupTabs();
   setupSearch();
   renderQuickChips();
   renderMarketEmpty();
 
+  // Загружаем данные в фоне
   try {
     [state.insertTypes, state.holders, state.categories] = await Promise.all([
       api("/api/insert-types"),
@@ -346,6 +356,7 @@ async function doSearch() {
   if (!q) return;
   state.query = q;
 
+  // Auto-detect category if user hasn't picked manually
   let detected = null;
   if (!state.categoryManual) {
     detected = detectCategory(q);
@@ -353,6 +364,8 @@ async function doSearch() {
       state.category = detected.cat;
       activateCategoryBtn(state.category);
       renderQuickChips();
+    } else if (!detected) {
+      // keep current or default
     }
   }
   renderCategoryIndicator(detected);
@@ -400,6 +413,7 @@ function renderTab() {
   else if (state.tab === "compat") renderCompat();
   else if (state.tab === "shapes") renderShapes();
   else if (state.tab === "holders") renderHoldersTab();
+  else if (state.tab === "watch") renderWatchlist();
 }
 
 function renderMarketEmpty() {
@@ -416,14 +430,20 @@ function renderMarket() {
   const s = d.stats || {};
   let html = "";
 
+  // Compare button
   const alreadyInCmp = cmpItems.find(x => x.query === state.query && x.category === state.category);
+  const watched = isWatched(state.query);
   html += `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn ${alreadyInCmp ? "btn-secondary" : "btn-primary"}" onclick="cmpAdd()" ${alreadyInCmp ? "disabled" : ""}>
       ${alreadyInCmp ? "✅ Добавлено в сравнение" : "⚖️ Добавить в сравнение"}
     </button>
+    <button class="btn btn-secondary" onclick="toggleWatch('${state.query.replace(/'/g,"\\'")}','${state.category}')">
+      ${watched ? "⭐ В списке" : "☆ В список"}
+    </button>
     ${cmpItems.length > 1 ? `<button class="btn btn-secondary" onclick="openCompare()">Открыть сравнение (${cmpItems.length})</button>` : ""}
   </div>`;
 
+  // Marketplace buttons
   const q = encodeURIComponent(state.query);
   const markets = [
     { label: "Авито", color: "#00aaff", text: "#fff", url: `https://www.avito.ru/rossiya?q=${q}` },
@@ -451,11 +471,13 @@ function renderMarket() {
     html += `<div class="alert alert-info">📊 Прямой поиск недоступен — показана <strong>рыночная оценка</strong> на основе базы данных. Для актуальных цен используйте ссылки на площадки выше.</div>`;
   }
 
+  // Section header
   html += `<div class="section-header">
     <span class="section-title">${CAT_ICONS[state.category] || ""} "${esc(state.query)}"</span>
     <span class="source-badge">${esc(d.source || "—")} · ${d.timestamp || ""}${d.from_cache ? ' · <span style="color:var(--warning)">кэш</span>' : ""}</span>
   </div>`;
 
+  // Stats
   html += `<div class="stats-row">
     <div class="stat-card">
       <div class="label">Средняя цена</div>
@@ -473,10 +495,12 @@ function renderMarket() {
     </div>
   </div>`;
 
+  // Market analysis block
   if (s.offer_count !== undefined) {
     html += renderMarketAnalysis(s);
   }
 
+  // New/Used split
   if (s.new_count > 0 || s.used_count > 0) {
     html += `<div class="price-split">
       <div class="price-box new-box">
@@ -492,6 +516,7 @@ function renderMarket() {
     </div>`;
   }
 
+  // Sort controls
   if (d.listings?.length) {
     const hasPrice = d.listings.some(x => x.price);
     if (hasPrice) {
@@ -503,6 +528,7 @@ function renderMarket() {
     }
   }
 
+  // Listings
   if (d.listings?.length) {
     html += `<div class="listings-grid" id="listings-grid">`;
     d.listings.forEach(item => {
@@ -593,126 +619,4 @@ function renderShapes() {
   Object.entries(cats).forEach(([k, c]) => {
     const subs = Object.entries(c.subtypes || {});
     html += `<div class="brand-card">
-      <div class="brand-header">
-        <div style="font-size:1.4rem">${c.icon || ""}</div>
-        <div><div class="brand-name">${esc(c.name)}</div><div class="brand-country">Единица: ${esc(c.unit || "шт")}</div></div>
-      </div>
-      ${subs.length ? `<div style="margin-bottom:6px">${subs.map(([, v]) => `<span class="app-tag" style="margin:2px;font-size:.73rem">${esc(v)}</span>`).join("")}</div>` : ""}
-      ${(c.popular || []).slice(0, 4).map(x => `<span class="insert-tag" onclick="selectCatAndSearch('${k}','${esc(x)}')">${esc(x)}</span>`).join("")}
-    </div>`;
-  });
-  html += `</div>`;
-
-  html += `<div class="section-title" style="margin-bottom:10px">Формы сменных пластин (ISO 1832)</div><div class="shape-grid">`;
-  Object.entries(shapes).forEach(([code, s]) => {
-    html += `<div class="shape-card" onclick="showShapeDetail('${code}')"><div class="shape-code">${code}</div><div class="shape-name">${esc(s.name)}</div></div>`;
-  });
-  html += `</div><div id="shape-detail"></div>`;
-
-  html += `<div class="section-title" style="margin:18px 0 10px">Группы материалов ISO 513</div><div class="mat-grid">`;
-  Object.entries(mats).forEach(([code, m]) => {
-    html += `<div class="mat-badge"><div class="mat-dot" style="background:${esc(m.color)}"></div><div><strong>${code}</strong> — ${esc(m.name)}<div style="font-size:.7rem;color:var(--dim)">${esc(m.description)}</div></div></div>`;
-  });
-  html += `</div>`;
-  p.innerHTML = html;
-}
-
-window.selectCatAndSearch = function (cat, q) {
-  $$(".cat-btn").forEach(b => b.classList.toggle("active", b.dataset.cat === cat));
-  state.category = cat;
-  state.categoryManual = true;
-  renderQuickChips();
-  setQuery(q);
-  $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "market"));
-  state.tab = "market";
-  renderTab();
-};
-
-window.showShapeDetail = function (code) {
-  const shapes = state.insertTypes?.shapes || {};
-  const s = shapes[code]; if (!s) return;
-  $$(".shape-card").forEach(c => c.classList.toggle("active", c.querySelector(".shape-code")?.textContent === code));
-  $("#shape-detail").innerHTML = `<div class="card" style="margin-top:10px">
-    <div class="card-title">${code} — ${esc(s.name)}</div>
-    <p style="font-size:.84rem;color:var(--muted);margin-bottom:10px">${esc(s.description)}</p>
-    <div class="app-tags">${s.applications.map(a => `<span class="app-tag">${esc(a)}</span>`).join("")}</div>
-  </div>`;
-};
-
-/* ══ HOLDERS ══ */
-function renderHoldersTab() {
-  const p = $("#tab-holders");
-  if (!state.holders) { p.innerHTML = loader(); return; }
-  let html = `<div class="section-title" style="margin-bottom:12px">Поиск по держателю</div>
-    <div class="holder-search-row">
-      <input id="holder-input" type="text" placeholder="Начало кода держателя, например PCLNR...">
-      <button class="btn btn-secondary" onclick="doHolderSearch()">Найти</button>
-    </div>
-    <div id="holder-results"></div>
-    <div class="section-title" style="margin:16px 0 10px">Все держатели по брендам</div>
-    <div class="brands-grid">`;
-
-  state.holders.forEach(brand => {
-    html += `<div class="brand-card">
-      <div class="brand-header">
-        <div class="brand-dot" style="background:${esc(brand.logo_color)}"></div>
-        <div><div class="brand-name">${esc(brand.brand)}</div><div class="brand-country">${esc(brand.country)}</div></div>
-      </div>`;
-    brand.lines.forEach(line => {
-      html += `<div style="margin-bottom:10px">
-        <div class="brand-line">${esc(line.name)}</div>
-        <div class="brand-desc">${esc(line.description)}</div>
-        <div>${line.holders.slice(0, 4).map(h => `<span class="holder-tag">${esc(h)}</span>`).join("")}</div>
-        <div style="margin-top:4px">${line.inserts.slice(0, 4).map(i => `<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
-      </div>`;
-    });
-    html += `</div>`;
-  });
-  html += `</div>`;
-  p.innerHTML = html;
-}
-
-window.doHolderSearch = async function () {
-  const inp = $("#holder-input"); if (!inp) return;
-  const prefix = inp.value.trim();
-  const res = $("#holder-results");
-  if (!prefix) { res.innerHTML = ""; return; }
-  res.innerHTML = loader();
-  try {
-    const data = await api(`/api/search-by-holder?prefix=${encodeURIComponent(prefix)}`);
-    if (!data.length) { res.innerHTML = empty("🔍", "Не найдено"); return; }
-    res.innerHTML = `<div class="brands-grid">${data.map(it => `<div class="brand-card">
-      <div class="brand-name" style="margin-bottom:6px">${esc(it.brand)} — ${esc(it.line)}</div>
-      <div>${it.holders.map(h => `<span class="holder-tag">${esc(h)}</span>`).join("")}</div>
-      <div style="margin-top:6px">${it.compatible_inserts.map(i => `<span class="insert-tag" onclick="setQuery('${esc(i)}')">${esc(i)}</span>`).join("")}</div>
-    </div>`).join("")}</div>`;
-  } catch (e) { res.innerHTML = `<div class="alert alert-warn">Ошибка: ${esc(e.message)}</div>`; }
-};
-
-/* ══ CALCULATOR ══ */
-function setupCalc() {
-  const price = $("#calc-price");
-  const qty = $("#calc-qty");
-  const res = $("#calc-result");
-  if (!price || !qty || !res) return;
-  function recalc() {
-    const p = parseFloat(price.value);
-    const q = parseFloat(qty.value);
-    res.textContent = (p > 0 && q > 0) ? (p * q).toLocaleString("ru-RU") + " ₽" : "—";
-  }
-  price.addEventListener("input", recalc);
-  qty.addEventListener("input", recalc);
-}
-
-window.sortListings = function(dir) {
-  if (!state.marketData?.listings) return;
-  const sorted = [...state.marketData.listings].sort((a, b) => {
-    const pa = a.price ?? (dir === 'asc' ? Infinity : -Infinity);
-    const pb = b.price ?? (dir === 'asc' ? Infinity : -Infinity);
-    return dir === 'asc' ? pa - pb : pb - pa;
-  });
-  state.marketData = { ...state.marketData, listings: sorted };
-  renderMarket();
-};
-
-document.addEventListener("DOMContentLoaded", () => { init(); setupCalc(); renderHistory(); });
+      <div class="brand

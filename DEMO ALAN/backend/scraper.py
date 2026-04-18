@@ -180,4 +180,3 @@ def _estimate_market(query: str, category: str) -> Dict:
         "timestamp": ts,
         "is_estimate": True,
     }
-    

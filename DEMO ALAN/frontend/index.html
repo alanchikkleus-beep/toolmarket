@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ToolMarket Monitor</title>
+  <title>ToolMarket Monitor — Мониторинг цен на металлорежущий инструмент</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,9 +12,9 @@
   <header>
     <div class="logo">ToolMarket <span>Monitor</span></div>
     <div class="badge">Металлорежущий инструмент</div>
-    <div style="margin-left:auto">
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
       <button class="btn btn-secondary" id="cmp-open-btn" style="display:none" onclick="openCompare()">
-        ⚖️ Сравнить (<span id="cmp-count">0</span>)
+        Сравнение (<span id="cmp-count">0</span>)
       </button>
     </div>
   </header>
@@ -23,58 +23,58 @@
 
     <!-- Категории -->
     <div class="cat-bar" id="cat-bar">
-      <button class="cat-btn" data-cat="inserts">🔶 Пластины</button>
-      <button class="cat-btn" data-cat="drills">🔩 Сверла</button>
-      <button class="cat-btn" data-cat="mills">⚙️ Фрезы</button>
-      <button class="cat-btn" data-cat="burrs">🌀 Борфрезы</button>
-      <button class="cat-btn" data-cat="reamers">🔧 Развертки</button>
-      <button class="cat-btn" data-cat="threading">🔗 Резьбонарезной</button>
-      <button class="cat-btn" data-cat="tooling">🛠️ Оснастка</button>
-      <button class="cat-btn" data-cat="measuring">📏 Измерительный</button>
-      <button class="cat-btn" data-cat="toolholders">🗜️ Державки</button>
-      <button class="cat-btn" data-cat="other">📦 Другое</button>
+      <button class="cat-btn" data-cat="inserts">Пластины</button>
+      <button class="cat-btn" data-cat="drills">Сверла</button>
+      <button class="cat-btn" data-cat="mills">Фрезы</button>
+      <button class="cat-btn" data-cat="burrs">Борфрезы</button>
+      <button class="cat-btn" data-cat="reamers">Развертки</button>
+      <button class="cat-btn" data-cat="threading">Резьбонарезной</button>
+      <button class="cat-btn" data-cat="tooling">Оснастка</button>
+      <button class="cat-btn" data-cat="measuring">Измерительный</button>
+      <button class="cat-btn" data-cat="toolholders">Державки</button>
+      <button class="cat-btn" data-cat="other">Другое</button>
     </div>
 
     <!-- Поиск -->
     <div class="search-wrap">
       <div class="search-box">
         <input id="search-input" type="text"
-          placeholder="Введите название или код инструмента..."
+          placeholder="Введите название или код инструмента, например CNMG 120408..."
           spellcheck="false" autocomplete="off">
-        <button class="btn btn-primary" id="search-btn">Найти</button>
+        <button class="btn btn-primary" id="search-btn" style="border-radius:0 var(--r-lg) var(--r-lg) 0;padding:14px 26px;font-size:0.85rem">Найти</button>
       </div>
       <div id="cat-detect-bar" style="display:none"></div>
     </div>
 
     <!-- Быстрый выбор -->
     <div class="quick-select">
-      <div class="quick-label">Быстрый выбор</div>
+      <span class="quick-label">Быстрый выбор</span>
       <div class="chips" id="quick-chips"></div>
     </div>
 
     <!-- История поиска -->
     <div class="quick-select">
-      <div class="quick-label">История поиска</div>
+      <span class="quick-label">История поиска</span>
       <div class="chips" id="history-list"></div>
     </div>
 
     <!-- Калькулятор -->
     <div class="calc-bar">
-      <span class="quick-label" style="margin:0">🧮 Калькулятор:</span>
-      <input id="calc-price" type="number" placeholder="Цена за шт (₽)" min="0">
-      <span style="color:var(--muted)">×</span>
-      <input id="calc-qty" type="number" placeholder="Кол-во" min="1" value="10">
-      <span style="color:var(--muted)">=</span>
-      <span id="calc-result" style="font-weight:700;color:var(--success);min-width:100px">—</span>
+      <span class="quick-label" style="margin:0;white-space:nowrap">Калькулятор стоимости</span>
+      <input id="calc-price" type="number" placeholder="Цена за шт. (₽)" min="0">
+      <span style="color:var(--dim);font-size:1rem">×</span>
+      <input id="calc-qty" type="number" placeholder="Количество" min="1" value="10">
+      <span style="color:var(--dim)">=</span>
+      <span id="calc-result" style="font-family:var(--font-display);font-weight:700;font-size:1.1rem;color:var(--green);min-width:120px;letter-spacing:-0.02em">—</span>
     </div>
 
     <!-- Вкладки -->
     <div class="tabs">
-      <div class="tab active" data-tab="market">📈 Рынок и цены</div>
-      <div class="tab" data-tab="compat">⚙️ Совместимость</div>
-      <div class="tab" data-tab="shapes">📐 Типы инструментов</div>
-      <div class="tab" data-tab="holders">🔧 Держатели</div>
-      <div class="tab" data-tab="watch">⭐ Список <span id="watch-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:0.75rem;margin-left:4px">0</span></div>
+      <div class="tab active" data-tab="market">Рынок и цены</div>
+      <div class="tab" data-tab="compat">Совместимость</div>
+      <div class="tab" data-tab="shapes">Типы инструментов</div>
+      <div class="tab" data-tab="holders">Державки</div>
+      <div class="tab" data-tab="watch">Список наблюдения <span id="watch-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:0.70rem;margin-left:6px;font-family:var(--font-mono)">0</span></div>
     </div>
 
     <div id="tab-market"  class="tab-panel"></div>
@@ -90,8 +90,8 @@
 <div id="cmp-modal" class="cmp-overlay" style="display:none" onclick="if(event.target===this)closeCompare()">
   <div class="cmp-box">
     <div class="cmp-header">
-      <span style="font-weight:700;font-size:1.05rem">⚖️ Сравнение инструментов</span>
-      <button class="btn btn-secondary" onclick="closeCompare()">✕ Закрыть</button>
+      <span style="font-family:var(--font-display);font-weight:700;font-size:1rem;letter-spacing:-0.02em">Сравнение инструментов</span>
+      <button class="btn btn-secondary" onclick="closeCompare()">Закрыть</button>
     </div>
     <div id="cmp-content"></div>
   </div>

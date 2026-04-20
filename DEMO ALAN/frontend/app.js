@@ -534,12 +534,12 @@ function renderMarket() {
   // Compare button
   const alreadyInCmp = cmpItems.find(x => x.query === state.query && x.category === state.category);
   const watched = isWatched(state.query);
-  html += `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+  html += `<div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button class="btn ${alreadyInCmp ? "btn-secondary" : "btn-primary"}" onclick="cmpAdd()" ${alreadyInCmp ? "disabled" : ""}>
-      ${alreadyInCmp ? "✅ Добавлено в сравнение" : "⚖️ Добавить в сравнение"}
+      ${alreadyInCmp ? "Добавлено в сравнение" : "Добавить в сравнение"}
     </button>
     <button class="btn btn-secondary" onclick="toggleWatch('${state.query.replace(/'/g,"\\'")}','${state.category}')">
-      ${watched ? "⭐ В списке" : "☆ В список"}
+      ${watched ? "★ В списке" : "☆ В список"}
     </button>
     ${cmpItems.length > 1 ? `<button class="btn btn-secondary" onclick="openCompare()">Открыть сравнение (${cmpItems.length})</button>` : ""}
   </div>`;
@@ -619,24 +619,26 @@ function renderMarket() {
 
   // Таблица цен по источникам
   if (d.specialist_sources?.length) {
-    html += `<div class="section-title" style="margin:18px 0 10px">📊 Цены по источникам <span style="font-size:.75rem;color:var(--muted);font-weight:400">— от дешевле к дороже</span></div>
-    <div style="overflow-x:auto;margin-bottom:18px">
-    <table style="width:100%;border-collapse:collapse;font-size:.82rem">
-      <thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">
-        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Источник</th>
-        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Тип</th>
-        <th style="text-align:right;padding:6px 10px;border-bottom:1px solid var(--border)">Мин</th>
-        <th style="text-align:right;padding:6px 10px;border-bottom:1px solid var(--border)">Средняя</th>
-        <th style="text-align:right;padding:6px 10px;border-bottom:1px solid var(--border)">Макс</th>
+    html += `<div class="section-header" style="margin-top:26px">
+      <span class="section-title">Цены по источникам</span>
+      <span class="source-badge">от дешевле к дороже</span>
+    </div>
+    <div class="source-table-wrap">
+    <table>
+      <thead><tr>
+        <th>Источник</th>
+        <th>Тип</th>
+        <th>Мин</th>
+        <th>Средняя</th>
+        <th>Макс</th>
       </tr></thead><tbody>`;
-    d.specialist_sources.forEach((src, i) => {
-      const bg = i % 2 === 0 ? "background:rgba(255,255,255,.02)" : "";
-      html += `<tr style="${bg};cursor:pointer" onclick="window.open('${esc(src.url)}','_blank')">
-        <td style="padding:7px 10px;font-weight:600;color:var(--accent)">${esc(src.name)}</td>
-        <td style="padding:7px 10px;color:var(--muted)">${esc(src.type)}</td>
-        <td style="padding:7px 10px;text-align:right;color:var(--success)">${fmt(src.min_price)}</td>
-        <td style="padding:7px 10px;text-align:right;font-weight:700">${fmt(src.avg_price)}</td>
-        <td style="padding:7px 10px;text-align:right;color:#fc8181">${fmt(src.max_price)}</td>
+    d.specialist_sources.forEach(src => {
+      html += `<tr onclick="window.open('${esc(src.url)}','_blank')">
+        <td class="src-name">${esc(src.name)}</td>
+        <td class="src-type">${esc(src.type)}</td>
+        <td class="src-min">${fmt(src.min_price)}</td>
+        <td class="src-avg">${fmt(src.avg_price)}</td>
+        <td class="src-max">${fmt(src.max_price)}</td>
       </tr>`;
     });
     html += `</tbody></table></div>`;

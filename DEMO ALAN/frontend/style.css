@@ -95,10 +95,8 @@ input, select { font-family: inherit; }
   display: flex;
   align-items: center;
   padding: 0 32px;
-  background: rgba(248,244,236,0.96);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1.5px solid var(--line-mid);
+  background: var(--ink-1);
+  border-bottom: 1.5px solid rgba(255,255,255,0.08);
 }
 
 .nav-logo {
@@ -109,7 +107,7 @@ input, select { font-family: inherit; }
   font-size: 0.84rem;
   font-weight: 700;
   letter-spacing: 0.05em;
-  color: var(--ink-1);
+  color: #fff;
   cursor: pointer;
   white-space: nowrap;
   margin-right: 40px;
@@ -128,14 +126,14 @@ input, select { font-family: inherit; }
   border-radius: var(--r);
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--ink-2);
+  color: rgba(255,255,255,0.65);
   transition: background 0.15s, color 0.15s;
   border: 1.5px solid transparent;
 }
 .nav-links a:hover {
-  background: var(--bg-sunken);
-  color: var(--ink-1);
-  border-color: var(--line-mid);
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  border-color: rgba(255,255,255,0.15);
   text-decoration: none;
 }
 
@@ -152,11 +150,11 @@ input, select { font-family: inherit; }
   gap: 6px;
   font-family: var(--font-mono);
   font-size: 0.72rem;
-  color: var(--ink-3);
+  color: rgba(255,255,255,0.6);
   padding: 5px 12px;
   border-radius: 20px;
-  border: 1.5px solid var(--line-mid);
-  background: var(--bg-sunken);
+  border: 1.5px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.08);
 }
 .live-dot {
   width: 6px;
@@ -175,24 +173,24 @@ input, select { font-family: inherit; }
   border-radius: var(--r);
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--ink-2);
+  color: rgba(255,255,255,0.8);
   background: transparent;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid rgba(255,255,255,0.25);
   transition: background 0.15s, color 0.15s;
 }
-.btn-ghost:hover { background: var(--bg-sunken); color: var(--ink-1); }
+.btn-ghost:hover { background: rgba(255,255,255,0.1); color: #fff; }
 
 .btn-dark {
   padding: 7px 18px;
   border-radius: var(--r);
   font-size: 0.85rem;
   font-weight: 700;
-  color: #fff;
-  background: var(--ink-1);
-  border: 1.5px solid var(--ink-1);
+  color: var(--ink-1);
+  background: var(--gold-soft);
+  border: 1.5px solid var(--gold);
   transition: background 0.15s;
 }
-.btn-dark:hover { background: var(--ink-2); border-color: var(--ink-2); }
+.btn-dark:hover { background: #fff; }
 
 /* ══════════════════════════════════════════
    HERO
